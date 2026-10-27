@@ -25,5 +25,6 @@ jobs:
           cache: npm
           cache-dependency-path: npm-shrinkwrap.json
       - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm ls esbuild --all
       - run: npm run check
       - run: npm pack --dry-run --ignore-scripts

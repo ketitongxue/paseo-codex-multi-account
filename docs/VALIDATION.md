@@ -19,6 +19,8 @@
 - **真实 Paseo beta 插件子进程运行时**：加载本插件、typed RPC 输入验证、Usage Source 发现/过期报告、session-open 的 env/tools 通过实际 IPC 传输、Pi hook 不变、卸载清理。daemon SDK 连接使用最小测试宿主，不连接生产 daemon。
 - **市场材料预检**：中英文 overview 不含插件安装命令、manifest 本地 PNG 引用、截图样例账号不含真实邮箱/目录、可发布 shrinkwrap 与依赖声明同步、preparation 锁定输入且禁用生命周期脚本。
 
+CI 首轮暴露 npm 10 / Node 22 对 Vite 可选 esbuild peer 的锁文件兼容问题。已将项目开发用 esbuild 固定为 0.28.2，同时保留 Paseo SDK 自己的 esbuild 0.25.12；`npm ls esbuild --all` 无冲突，npm 10 的干净 `npm ci` 与本机 62 项测试再次通过。CI 另增加依赖图检查，最终矩阵状态以所发布 commit 的 Actions 记录为准。运行时依赖未改变。
+
 ## 发布包验证
 
 `npm pack` 生成 `paseo-codex-multi-account-0.1.0.tgz`。最新归档含 28 个发布文件，包括中英文 overview、PNG 预览、发布文档及 `npm-shrinkwrap.json`；不含 `.research/`、测试/预览宿主源码、node_modules、Git 数据或真实认证文件。
