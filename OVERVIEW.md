@@ -12,7 +12,7 @@ The interface preview uses synthetic accounts and usage. The account screen and 
 
 ## Setup
 
-Use Paseo daemon and client v0.14.0-beta.1, the version tested by this release, with Node.js 22.12 or newer and a separately installed official Codex CLI. The manifest permits the 0.14 series, but later releases have not been verified. Sign-in/protocol testing targets Codex CLI 0.164.0. The plugin does not install or download Codex for you.
+Use a Paseo daemon and client in the 0.14 or 0.15 series, with Node.js 22.12 or newer and a separately installed official Codex CLI. This release checks SDK types, both plugin bundles and the plugin subprocess runtime against Paseo 0.14.0-beta.1, 0.14.0-beta.2, 0.14.0 and 0.15.0-beta.1. The supported range is `>=0.14.0-beta.1 <0.16.0`; versions below 0.14 and unverified 0.16+ releases are not accepted. On hosts with the new lifecycle API, the plugin uses `agent.open.before`; older hosts retain the compatible session-open hook. Sign-in/protocol testing targets Codex CLI 0.164.0. The plugin does not install or download Codex for you.
 
 The daemon needs macOS Keychain, or Linux Secret Service with `secret-tool`, for direct keyring storage. Linux keyring has not been verified on a real machine. Windows and Codex's encrypted `secrets` keyring backend are not supported. Browser sign-in must finish on the daemon's computer; device-code sign-in can finish on another device. Each account needs a ChatGPT subscription usable by Codex; API-key accounts are not supported.
 

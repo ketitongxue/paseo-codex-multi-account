@@ -36,6 +36,12 @@
 
 这些边界修复不改变“独立 home 不自动迁移原生历史”的设计，也不改动用户 Pi 配置或生产 daemon。
 
+## v0.1.1：0.14 / 0.15 兼容更新
+
+研究了官方 0.14.0 与 0.15.0-beta.1 的 plugin lifecycle、Usage Source、客户端 contracts 和 agent reload API 差异。0.15 的 `addHook` / `agent.open.before` 是新增入口，旧 `before` 入口仍映射到新名称；本插件使用能力检测，保持老宿主回退。Usage 与所用客户端 API 无破坏性差异。
+
+兼容性结论以 npm 发布的真实 SDK/运行时为准，而不是只比较仓库标签或伪造 daemon version。新增三个锁定的 server 开发依赖 alias，连同最低版本基线覆盖 0.14.0-beta.1、beta.2、0.14.0、0.15.0-beta.1；同时逐版本验证 SDK 类型和真实编译/IPC。manifest 扩展到 `<0.16.0`，不向下声称支持 0.13，也不放行未验证的 0.16+。见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+
 上游链接：
 - https://github.com/getpaseo/paseo/tree/v0.14.0-beta.1
 - https://github.com/dutchakdev/paseo-plugin-account-switcher/tree/v0.7.1

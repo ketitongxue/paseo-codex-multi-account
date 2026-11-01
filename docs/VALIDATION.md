@@ -1,10 +1,10 @@
 # 验证记录
 
-环境：macOS / Node v26.8.2 / Codex CLI 0.164.0。开发与运行时目标均锁定 Paseo `0.14.0-beta.1`。开发期间未升级全局 CLI、未将插件安装到生产 daemon。
+环境：macOS / Node v26.8.2 / Codex CLI 0.164.0。v0.1.1 的验证目标扩展至 Paseo `0.14.0-beta.1`、`0.14.0-beta.2`、`0.14.0`、`0.15.0-beta.1`。开发期间未升级全局 CLI、未将插件安装到生产 daemon。
 
 ## 自动测试
 
-`npm run check`：类型检查、Biome、Vitest（单 worker）。最新结果 **10 个测试文件、62 项测试全部通过**。使用临时目录与合成凭据，不触及用户 Pi、Codex 或 Paseo 配置。
+`npm run check`：类型检查、Biome、Vitest（单 worker）。最新结果 **11 个测试文件、75 项测试全部通过**。使用临时目录与合成凭据，不触及用户 Pi、Codex 或 Paseo 配置。
 
 覆盖：
 
@@ -15,15 +15,16 @@
 - 删除外部账号不碰认证文件；默认/绑定账号不能删除；托管 home 官方 logout 与严格路径校验；释放绑定后禁止默认身份回落。
 - 真实 Node 假 Codex 子进程的设备/浏览器登录、提前完成事件、错配事件、取消/超时、异常退出处理、非官方链接拒绝、进程回收；即使收到成功通知，keyring 缺失/过期/身份不明仍失败。不使用真实 OAuth。
 - React 渲染账号/额度与删除确认、手动刷新、客户端命令注册和清理。
-- **真实 Paseo beta 编译器**：编译双入口并校验跨运行时边界，拒绝 0.13.2。
-- **真实 Paseo beta 插件子进程运行时**：加载本插件、typed RPC 输入验证、Usage Source 发现/过期报告、session-open 的 env/tools 通过实际 IPC 传输、Pi hook 不变、卸载清理。daemon SDK 连接使用最小测试宿主，不连接生产 daemon。
+- **四版本真实 SDK 与编译器**：逐版本检查服务端/客户端/shared 的 API 类型，编译双入口并校验跨运行时边界；各编译器均验证拒绝 0.13.2 与 0.16.0-beta.1。
+- **四版本真实插件子进程运行时**：各自加载本插件、校验 typed RPC、Usage Source 发现/过期报告、通过真实 IPC 传输会话打开的 env/tools、Pi hook 不变及卸载清理。新宿主使用 agent.open.before，旧宿主使用 session_open；测试不混用其他版本的 SDK 声称兼容。daemon SDK 连接使用最小测试宿主，不连接生产 daemon。
+- **hook 能力检测**：新 API 优先、旧 API 回退、只注册一次、保留 this/清理函数，新注册失败不静默绕过。
 - **市场材料预检**：中英文 overview 不含插件安装命令、manifest 本地 PNG 引用、截图样例账号不含真实邮箱/目录、可发布 shrinkwrap 与依赖声明同步、preparation 锁定输入且禁用生命周期脚本。
 
 CI 首轮暴露 npm 10 / Node 22 对 Vite 可选 esbuild peer 的锁文件兼容问题。已将项目开发用 esbuild 固定为 0.28.2，同时保留 Paseo SDK 自己的 esbuild 0.25.12；`npm ls esbuild --all` 无冲突，npm 10 的干净 `npm ci` 与本机 62 项测试再次通过。CI 另增加依赖图检查，最终矩阵状态以所发布 commit 的 Actions 记录为准。运行时依赖未改变。
 
 ## 发布包验证
 
-`npm pack` 生成 `paseo-codex-multi-account-0.1.0.tgz`。最新归档含 28 个发布文件，包括中英文 overview、PNG 预览、发布文档及 `npm-shrinkwrap.json`；不含 `.research/`、测试/预览宿主源码、node_modules、Git 数据或真实认证文件。
+`npm pack` 生成 `paseo-codex-multi-account-0.1.1.tgz`。归档包括中英文 overview、PNG 预览、发布文档及 `npm-shrinkwrap.json`；不含 `.research/`、测试/预览宿主源码、node_modules、Git 数据或真实认证文件。
 
 解包到临时目录后使用空 npm cache 和官方 registry 执行 manifest 同款 `npm ci --omit=dev --ignore-scripts --no-audit --no-fund`。唯一运行时依赖为 `@iarna/toml@2.2.5`，其 integrity 已与官方 npm 元数据核对；未安装开发 SDK。真实 Paseo beta 编译器成功编译发布包的客户端与服务端入口，声明的图片、overview 与 shrinkwrap 均存在。验证后删除临时安装目录。
 

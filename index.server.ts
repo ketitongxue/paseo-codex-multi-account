@@ -2,6 +2,7 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { defineAgentTool } from "@getpaseo/plugin/server";
 import { z } from "zod";
 import { AUTH_OVERRIDES } from "./server/codex-rpc";
+import { registerSessionOpenHook } from "./server/compatibility";
 import { Controller } from "./server/controller";
 import { PublicError, safe } from "./server/errors";
 import * as rpc from "./shared/contracts";
@@ -71,7 +72,7 @@ export default function contribute(server: PluginServerContext) {
       };
     },
   });
-  const removeHook = server.before("agent.session_open", async ({ request }, { paseo }) =>
+  const removeHook = registerSessionOpenHook(server, async ({ request }, { paseo }) =>
     safe(async () => {
       if (request.provider !== "codex") return;
       // Provider launch overrides are not included in the hook's launch-only env map.

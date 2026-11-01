@@ -130,7 +130,7 @@ export class CodexRpc {
       clientInfo: {
         name: "paseo_codex_multi_account",
         title: "Paseo Codex Multi Account",
-        version: "0.1.0",
+        version: "0.1.1",
       },
       capabilities: { experimentalApi: true },
     });
