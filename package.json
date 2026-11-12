@@ -1,6 +1,6 @@
 {
   "name": "paseo-codex-multi-account",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Manage Codex/ChatGPT accounts in independent homes with per-agent selection and subscription usage.",
   "type": "module",
   "license": "MIT",
@@ -60,6 +60,9 @@
     "paseo-server-014": "npm:@getpaseo/server@0.14.0",
     "paseo-server-014-beta2": "npm:@getpaseo/server@0.14.0-beta.2",
     "paseo-server-015-beta1": "npm:@getpaseo/server@0.15.0-beta.1",
+    "paseo-server-0154": "npm:@getpaseo/server@0.15.4",
+    "paseo-server-016-beta1": "npm:@getpaseo/server@0.16.0-beta.1",
+    "paseo-server-016-beta2": "npm:@getpaseo/server@0.16.0-beta.2",
     "pino": "^10.4.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",

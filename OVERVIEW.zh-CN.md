@@ -12,7 +12,7 @@
 
 ## 使用条件
 
-要求 Paseo daemon 与客户端均为 0.14 或 0.15 系列、Node.js 22.12 或更新版本，以及另行安装的官方 Codex CLI。本版本使用 0.14.0-beta.1、0.14.0-beta.2、0.14.0、0.15.0-beta.1 的真实 SDK、双入口编译器和插件子进程运行时进行检查；支持范围为 `>=0.14.0-beta.1 <0.16.0`，不接纳 0.14 以下或未经验证的 0.16+ 版本。有新 lifecycle API 的宿主使用 `agent.open.before`，旧宿主保留兼容的 session-open hook。登录和协议测试目标为 Codex CLI 0.164.0。插件不会替你下载或安装 Codex。
+要求 Paseo daemon 与客户端均为 0.14、0.15 或 0.16 系列、Node.js 22.12 或更新版本，以及另行安装的官方 Codex CLI。本版本使用 0.14.0-beta.1、0.14.0-beta.2、0.14.0、0.15.0-beta.1、0.15.4、0.16.0-beta.1、0.16.0-beta.2 的真实 SDK、双入口编译器和插件子进程运行时进行检查；支持范围为 `>=0.14.0-beta.1 <0.17.0`，不接纳 0.14 以下或未经验证的 0.17+ 版本。有新 lifecycle API 的宿主使用 `agent.open.before`，旧宿主保留兼容的 session-open hook，并保持新宿主只读 metadata 与后台 Agent 标记不变。登录和协议测试目标为 Codex CLI 0.164.0。插件不会替你下载或安装 Codex。
 
 daemon 需要 macOS Keychain，或配备 `secret-tool` 的 Linux Secret Service，使用 direct keyring 存储。Linux keyring 尚未经过实机验证，不支持 Windows 与 Codex 加密 `secrets` keyring 后端。浏览器登录必须在 daemon 所在电脑完成回调，设备码登录可以在其他设备完成。各账号需要可供 Codex 使用的 ChatGPT 订阅，不支持 API-key 账号。
 

@@ -35,6 +35,7 @@ const hosts = await Promise.all(
       compileDirectoryPlugin: compiler.compileDirectoryPlugin as typeof BaselineCompiler,
       PluginRuntime: runtime.PluginRuntime as typeof BaselineRuntime,
       MutableDaemonConfigSchema: protocol.MutableDaemonConfigSchema as typeof BaselineConfigSchema,
+      hasEntityMetadata: !!protocol.CreateAgentRequestMessageSchema?.shape?.metadata,
       openHook: lifecycle.pluginHookRegistry?.["agent.open.before"]
         ? "agent.open.before"
         : "agent.session_open",
@@ -49,6 +50,7 @@ describe.each(hosts)(
     compileDirectoryPlugin,
     PluginRuntime,
     MutableDaemonConfigSchema,
+    hasEntityMetadata,
     openHook,
   }) => {
     it("compiles both entries with runtime boundary validation and rejects unsupported Paseo", async () => {
@@ -56,7 +58,7 @@ describe.each(hosts)(
       expect(compiled.clientBundle?.length).toBeGreaterThan(1000);
       expect(compiled.serverBundle?.length).toBeGreaterThan(1000);
       await expect(compileDirectoryPlugin(process.cwd(), "0.13.2")).rejects.toThrow();
-      await expect(compileDirectoryPlugin(process.cwd(), "0.16.0-beta.1")).rejects.toThrow();
+      await expect(compileDirectoryPlugin(process.cwd(), "0.17.0-beta.1")).rejects.toThrow();
     });
     it("compiles an isolated production-only installation with no development SDK dependencies", async () => {
       const f = await fixture();
@@ -167,7 +169,14 @@ describe.each(hosts)(
         expect(snapshotJson).not.toContain("access_token");
         expect(snapshotJson).not.toContain("REFRESH_SECRET");
         // Still exercises credential rejection through the actual before-hook IPC, not a direct method call.
+        const readOnlyFields = {
+          ...(hasEntityMetadata
+            ? { metadata: { "other-plugin.note": { id: "synthetic", keep: true } } }
+            : {}),
+          ...(version === "0.16.0-beta.2" ? { background: true } : {}),
+        };
         const request = {
+          ...readOnlyFields,
           agentId: "agent-smoke",
           workspaceId: null,
           provider: "codex",
@@ -187,10 +196,12 @@ describe.each(hosts)(
         await writeFile(join(a.home, "auth.json"), authJson("synthetic-account"));
         const transformed = await open(openHook, request);
         expect(transformed.env.CODEX_HOME).toBe(a.home);
+        expect(transformed).toMatchObject(readOnlyFields);
         expect(transformed.tools[0].name).toBe("codex_accounts");
         const unaffected = await open(openHook, { ...request, provider: "pi" });
         expect(unaffected.env).toEqual({});
         expect(unaffected.tools).toEqual([]);
+        expect(unaffected).toMatchObject(readOnlyFields);
         const stored = await readFile(
           join(env.PASEO_HOME, "codex-multi-account", "accounts.json"),
           "utf8",
@@ -202,6 +213,7 @@ describe.each(hosts)(
         await runtime.startPlugin(pluginId, process.cwd());
         const resumed = await open(openHook, { ...request, reason: "resume", labels: {} });
         expect(resumed.env.CODEX_HOME).toBe(a.home);
+        expect(resumed).toMatchObject(readOnlyFields);
       } finally {
         await runtime.stopAll();
         await f.cleanup();

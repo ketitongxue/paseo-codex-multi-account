@@ -38,7 +38,7 @@ npm pack --dry-run --ignore-scripts
 1. 使用已确认的公开仓库 `ketitongxue/paseo-codex-multi-account`。
 2. `package.json` 的 `repository`、`homepage` 与 `bugs` 应保持与公开仓库一致，依赖变化时同步 shrinkwrap。
 3. 提交经过审阅的源码、测试、文档、图片与 shrinkwrap，推送到公开仓库。
-4. 等待 CI 通过，建议创建与 package version 一致的 tag / release（当前 `v0.1.1`），并记录对应完整 commit SHA。不要对已经提交审核的 tag 强制移动。
+4. 等待 CI 通过，建议创建与 package version 一致的 tag / release（当前 `v0.1.2`），并记录对应完整 commit SHA。不要对已经提交审核的 tag 强制移动。
 5. 在独立测试 daemon 上从公开 Git URL 的该固定 revision 安装，确认 `running` 且无错误。不需要升级全局 CLI，不要为发布而重启用户生产 daemon。
 
 Issue 正文模板见 [MARKETPLACE_SUBMISSION.md](MARKETPLACE_SUBMISSION.md)。提交时在正文补充 release tag 对应的完整 commit SHA、该 commit 的 CI 链接及隔离安装结果，不要以本机目录或本地 tgz 提交。

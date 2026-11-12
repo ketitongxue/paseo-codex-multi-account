@@ -42,6 +42,12 @@
 
 兼容性结论以 npm 发布的真实 SDK/运行时为准，而不是只比较仓库标签或伪造 daemon version。新增三个锁定的 server 开发依赖 alias，连同最低版本基线覆盖 0.14.0-beta.1、beta.2、0.14.0、0.15.0-beta.1；同时逐版本验证 SDK 类型和真实编译/IPC。manifest 扩展到 `<0.16.0`，不向下声称支持 0.13，也不放行未验证的 0.16+。见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
+## v0.1.2：当前 0.16 版本适配
+
+核对桌面端与实际 daemon 均为 0.16.0-beta.2，并查阅该版本（上游源码 commit `23bae61`）的 hooks、客户端引用 API、RPC/Usage 合同及 0.15.4 的变更。0.16 主要增加只读 metadata/background、客户端引用/Composer 控件和订阅能力，既有账号切换、重载与 Usage API 仍兼容。
+
+新增 0.15.4、0.16.0-beta.1、0.16.0-beta.2 的锁定 SDK/运行时，合计七个真实版本；新增 metadata/background 的 IPC 保留断言。运行时账号、安全存储、默认值和绑定逻辑不需要改写；支持上限扩展到 `<0.17.0`，保留 0.13 与 0.17+ 的拒绝测试。Codex clientInfo 版本同时更新，并加入发布版本同步断言。
+
 上游链接：
 - https://github.com/getpaseo/paseo/tree/v0.14.0-beta.1
 - https://github.com/dutchakdev/paseo-plugin-account-switcher/tree/v0.7.1

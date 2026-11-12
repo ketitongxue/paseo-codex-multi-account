@@ -9,6 +9,6 @@
     }
   },
   "media": ["assets/accounts-preview.png"],
-  "requirements": { "paseo": ">=0.14.0-beta.1 <0.16.0" },
+  "requirements": { "paseo": ">=0.14.0-beta.1 <0.17.0" },
   "build": [["npm", "ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"]]
 }

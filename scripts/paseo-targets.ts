@@ -9,6 +9,9 @@ export const paseoTargets = [
   { version: "0.14.0-beta.2", package: "paseo-server-014-beta2" },
   { version: "0.14.0", package: "paseo-server-014" },
   { version: "0.15.0-beta.1", package: "paseo-server-015-beta1" },
+  { version: "0.15.4", package: "paseo-server-0154" },
+  { version: "0.16.0-beta.1", package: "paseo-server-016-beta1" },
+  { version: "0.16.0-beta.2", package: "paseo-server-016-beta2" },
 ] as const;
 export type PaseoTarget = (typeof paseoTargets)[number];
 export interface PackageMetadata {

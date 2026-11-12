@@ -34,6 +34,9 @@ describe("marketplace publication materials", () => {
       dependencies: pkg.dependencies,
       devDependencies: pkg.devDependencies,
     });
+    expect(await readFile(resolve(root, "server/codex-rpc.ts"), "utf8")).toContain(
+      `version: "${pkg.version}"`,
+    );
     const toml = lock.packages["node_modules/@iarna/toml"];
     expect(toml.version).toBe(pkg.dependencies["@iarna/toml"]);
     expect(toml.resolved).toMatch(/^https:\/\/registry\.npmjs\.org\//);

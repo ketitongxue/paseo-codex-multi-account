@@ -1,6 +1,6 @@
 # paseo-codex-multi-account
 
-面向 **Paseo 0.14 / 0.15 系列** 的 Codex / ChatGPT 多账号插件。独立 `CODEX_HOME`、安全登录、账号保存/删除、逐 Agent 选择/切换，以及订阅额度 Usage Source。v0.1.1 的范围为 `>=0.14.0-beta.1 <0.16.0`，daemon 和客户端均需满足；已验证 0.14.0-beta.1、0.14.0-beta.2、0.14.0、0.15.0-beta.1，具体见 [兼容性说明](docs/COMPATIBILITY.md)。
+面向 **Paseo 0.14 / 0.15 / 0.16 系列** 的 Codex / ChatGPT 多账号插件。独立 `CODEX_HOME`、安全登录、账号保存/删除、逐 Agent 选择/切换，以及订阅额度 Usage Source。v0.1.2 的范围为 `>=0.14.0-beta.1 <0.17.0`，daemon 和客户端均需满足；已验证七个真实版本，包含当前稳定版 0.15.4 与 0.16.0-beta.2，具体见 [兼容性说明](docs/COMPATIBILITY.md)。
 
 [English overview](OVERVIEW.md) · [中文市场介绍](OVERVIEW.zh-CN.md) · [发布准备与审核流程](docs/PUBLISHING.md)
 
@@ -36,7 +36,7 @@
 cd /absolute/path/to/paseo-codex-multi-account
 npm ci --ignore-scripts
 npm run check
-# 确认 daemon 和客户端均满足 >=0.14.0-beta.1 <0.16.0，并且你信任插件后执行：
+# 确认 daemon 和客户端均满足 >=0.14.0-beta.1 <0.17.0，并且你信任插件后执行：
 paseo plugin install "$PWD"
 paseo plugin ls
 ```
@@ -136,6 +136,6 @@ npm run screenshot             # 可选：已安装 Chrome；只渲染合成数�
 npm pack                       # 生成可安装发布包
 ```
 
-测试使用临时 HOME/PASEO_HOME、合成 JWT 和假 Codex app-server；四个真实 Paseo 版本的 SDK 类型检查、编译器和插件子进程运行时均包含在 `npm run check` 内。兼容性测试依赖只作为开发依赖，不随生产安装加载。没有替你执行真实 OAuth 登录、真实模型 turn 或生产聊天切换。
+测试使用临时 HOME/PASEO_HOME、合成 JWT 和假 Codex app-server；七个真实 Paseo 版本的 SDK 类型检查、编译器和插件子进程运行时均包含在 `npm run check` 内。兼容性测试依赖只作为开发依赖，不随生产安装加载。没有替你执行真实 OAuth 登录、真实模型 turn 或生产聊天切换。
 
 研究与计划：[docs/RESEARCH.md](docs/RESEARCH.md)；验证记录：[docs/VALIDATION.md](docs/VALIDATION.md)；安全边界：[SECURITY.md](SECURITY.md)；市场发布：[docs/PUBLISHING.md](docs/PUBLISHING.md)。
