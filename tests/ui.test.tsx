@@ -14,6 +14,7 @@ vi.mock("@getpaseo/plugin/client", () => ({
       return {
         defaultId: null,
         bindings: {},
+        failover: { mode: "offer", autoContinue: true },
         accounts: [
           {
             id: "home-test",
@@ -124,6 +125,14 @@ describe("account screen", () => {
     expect(text).toContain("75%");
     const root = renderer?.root;
     if (!root) throw new Error("screen did not mount");
+    await act(async () => {
+      root.findByProps({ accessibilityLabel: "自动切换" }).props.onPress();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(state.calls.find((call) => call.name === "failover.set")?.input).toEqual({
+      mode: "auto",
+      autoContinue: true,
+    });
     await act(async () => {
       root.findByProps({ accessibilityLabel: "刷新全部额度" }).props.onPress();
       await new Promise((resolve) => setTimeout(resolve, 10));

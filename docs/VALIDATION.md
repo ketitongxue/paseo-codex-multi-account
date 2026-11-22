@@ -1,10 +1,10 @@
 # 验证记录
 
-原始认证/协议验证环境：macOS / Node v26.8.2 / Codex CLI 0.164.0。v0.1.2 的 Paseo 验证目标为 `0.14.0-beta.1`、`0.14.0-beta.2`、`0.14.0`、`0.15.0-beta.1`、`0.15.4`、`0.16.0-beta.1`、`0.16.0-beta.2`。开发期间未升级全局 CLI、未将插件安装到生产 daemon。
+原始认证/协议验证环境：macOS / Node v26.8.2 / Codex CLI 0.164.0。v0.2.0 的 Paseo 验证目标为 `0.14.0-beta.1`、`0.14.0-beta.2`、`0.14.0`、`0.15.0-beta.1`、`0.15.4`、`0.16.0-beta.1`、`0.16.0-beta.2`、`0.16.2`、`0.17.1`。
 
 ## 自动测试
 
-`npm run check`：类型检查、Biome、Vitest（单 worker）。最新结果 **11 个测试文件、84 项测试全部通过**。使用临时目录与合成凭据，不触及用户 Pi、Codex 或 Paseo 配置。
+`npm run check`：类型检查、Biome、Vitest（单 worker）。最新结果 **12 个测试文件、100 项测试全部通过**。使用临时目录与合成凭据，不触及用户 Pi、Codex 或 Paseo 配置。
 
 覆盖：
 
@@ -14,10 +14,11 @@
 - Agent label/env/default 选择、已有绑定固定、Pi 不受影响、busy 拒绝、已有 Agent 显式接管、重载确认、失败回退与未确认状态拒绝续接；首开竞争不覆盖绑定、历史 hook 不作为切换确认、切换全程保护原/目标账号。缺少稳定身份不能绑定，过期账号不能设为默认。
 - 删除外部账号不碰认证文件；默认/绑定账号不能删除；托管 home 官方 logout 与严格路径校验；释放绑定后禁止默认身份回落。
 - 真实 Node 假 Codex 子进程的设备/浏览器登录、提前完成事件、错配事件、取消/超时、异常退出处理、非官方链接拒绝、进程回收；即使收到成功通知，keyring 缺失/过期/身份不明仍失败。不使用真实 OAuth。
-- React 渲染账号/额度与删除确认、手动刷新、客户端命令注册和清理。
-- **七版本真实 SDK 与编译器**：逐版本检查服务端/客户端/shared 的 API 类型，编译双入口并校验跨运行时边界；各编译器均验证拒绝 0.13.2 与 0.17.0-beta.1。
-- **七版本真实插件子进程运行时**：各自加载本插件、校验 typed RPC、Usage Source 发现/过期报告、通过真实 IPC 传输会话打开的 env/tools、Pi hook 不变及卸载清理。新宿主使用 agent.open.before，旧宿主使用 session_open；测试不混用其他版本的 SDK 声称兼容。daemon SDK 连接使用最小测试宿主，不连接生产 daemon。
-- **hook 能力检测**：新 API 优先、旧 API 回退、只注册一次、保留 this/清理函数，新注册失败不静默绕过。0.16 实际传入的只读 metadata/background 在账号选择、非 Codex hook 及重载后保持不变。
+- React 渲染账号/额度、failover 配置与删除确认、手动刷新、客户端命令与 timeline renderer 注册和清理。
+- **额度耗尽 failover**：仅识别账号级窗口（5 小时/周）100% 且重置未到；默认提示模式去重推荐余量最多账号；显式开启自动切换后复用原重载与回滚逻辑并可选发送 `Continue.`；每 Agent 每小时至多 3 次自动切换、1 小时内不切回刚离开账号、失败或受限时回落提示；取消的 turn 与非 Codex provider 不触发。
+- **九版本真实 SDK 与编译器**：逐版本检查服务端/客户端/shared 的 API 类型，编译双入口并校验跨运行时边界；各编译器均验证拒绝 0.13.2 与 0.18.0-beta.1。
+- **九版本真实插件子进程运行时**：各自加载本插件、校验 typed RPC、Usage Source 发现/过期报告、通过真实 IPC 传输会话打开的 env/tools、Pi hook 不变及卸载清理。新宿主使用 agent.open.before，旧宿主使用 session_open；测试不混用其他版本的 SDK 声称兼容。daemon SDK 连接使用最小测试宿主，不连接生产 daemon。
+- **hook 能力检测**：新 API 优先、旧 API 回退、只注册一次、保留 this/清理函数，新注册失败不静默绕过。0.16/0.17 实际传入的只读 metadata/background 与 `appendSystemPrompt` 在账号选择、非 Codex hook 及重载后保持不变。
 - **市场材料预检**：中英文 overview 不含插件安装命令、manifest 本地 PNG 引用、截图样例账号不含真实邮箱/目录、可发布 shrinkwrap 与依赖声明同步、preparation 锁定输入且禁用生命周期脚本。
 
 CI 首轮暴露 npm 10 / Node 22 对 Vite 可选 esbuild peer 的锁文件兼容问题。已将项目开发用 esbuild 固定为 0.28.2，同时保留 Paseo SDK 自己的 esbuild 0.25.12；`npm ls esbuild --all` 无冲突，npm 10 的干净 `npm ci` 与本机 62 项测试再次通过。CI 另增加依赖图检查，最终矩阵状态以所发布 commit 的 Actions 记录为准。运行时依赖未改变。

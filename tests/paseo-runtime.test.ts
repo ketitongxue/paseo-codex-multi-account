@@ -36,6 +36,11 @@ const hosts = await Promise.all(
       PluginRuntime: runtime.PluginRuntime as typeof BaselineRuntime,
       MutableDaemonConfigSchema: protocol.MutableDaemonConfigSchema as typeof BaselineConfigSchema,
       hasEntityMetadata: !!protocol.CreateAgentRequestMessageSchema?.shape?.metadata,
+      hasBackground:
+        target.version === "0.16.0-beta.2" ||
+        target.version === "0.16.2" ||
+        target.version.startsWith("0.17."),
+      hasAppendSystemPrompt: target.version.startsWith("0.17."),
       openHook: lifecycle.pluginHookRegistry?.["agent.open.before"]
         ? "agent.open.before"
         : "agent.session_open",
@@ -51,6 +56,8 @@ describe.each(hosts)(
     PluginRuntime,
     MutableDaemonConfigSchema,
     hasEntityMetadata,
+    hasBackground,
+    hasAppendSystemPrompt,
     openHook,
   }) => {
     it("compiles both entries with runtime boundary validation and rejects unsupported Paseo", async () => {
@@ -58,7 +65,7 @@ describe.each(hosts)(
       expect(compiled.clientBundle?.length).toBeGreaterThan(1000);
       expect(compiled.serverBundle?.length).toBeGreaterThan(1000);
       await expect(compileDirectoryPlugin(process.cwd(), "0.13.2")).rejects.toThrow();
-      await expect(compileDirectoryPlugin(process.cwd(), "0.17.0-beta.1")).rejects.toThrow();
+      await expect(compileDirectoryPlugin(process.cwd(), "0.18.0-beta.1")).rejects.toThrow();
     });
     it("compiles an isolated production-only installation with no development SDK dependencies", async () => {
       const f = await fixture();
@@ -173,7 +180,8 @@ describe.each(hosts)(
           ...(hasEntityMetadata
             ? { metadata: { "other-plugin.note": { id: "synthetic", keep: true } } }
             : {}),
-          ...(version === "0.16.0-beta.2" ? { background: true } : {}),
+          ...(hasBackground ? { background: true } : {}),
+          ...(hasAppendSystemPrompt ? { appendSystemPrompt: ["synthetic prompt"] } : {}),
         };
         const request = {
           ...readOnlyFields,

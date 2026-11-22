@@ -3,6 +3,7 @@ import { Snapshot, UsageRow } from "../../shared/contracts";
 
 export const snapshot = Snapshot.parse({
   defaultId: "home-demo-personal",
+  failover: { mode: "offer", autoContinue: true },
   bindings: {
     "agent-demo": {
       accountId: "home-demo-personal",

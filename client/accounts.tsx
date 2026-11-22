@@ -23,6 +23,7 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
   const usage = useRpc(api.getUsage),
     switchTo = useRpc(api.switchAccount),
     release = useRpc(api.releaseBinding);
+  const setFailoverMode = useRpc(api.setFailover);
   const [name, setName] = useState(""),
     [home, setHome] = useState(""),
     [cwd, setCwd] = useState("");
@@ -148,6 +149,43 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
           })}
           {button("取消默认账号", () => setDefault({ accountId: null }), !snapshot.data?.defaultId)}
         </View>
+        {(() => {
+          const failover = snapshot.data?.failover ?? {
+            mode: "offer" as const,
+            autoContinue: true,
+          };
+          const apply = (
+            mode: api.FailoverSettings["mode"],
+            autoContinue = failover.autoContinue,
+          ) => setFailoverMode({ mode, autoContinue });
+          return (
+            <View
+              style={{
+                gap: 8,
+                padding: 12,
+                borderColor: colors.border,
+                borderWidth: 1,
+                borderRadius: 8,
+              }}
+            >
+              {body("额度耗尽 failover")}
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {button("关闭", () => apply("off"), failover.mode === "off")}
+                {button("提示切换", () => apply("offer"), failover.mode === "offer")}
+                {button("自动切换", () => apply("auto"), failover.mode === "auto")}
+                {failover.mode === "auto" &&
+                  button(
+                    failover.autoContinue ? "切换后发送 Continue.：开" : "切换后发送 Continue.：关",
+                    () => apply("auto", !failover.autoContinue),
+                  )}
+              </View>
+              {body(
+                "turn 结束后检测账号级窗口（5 小时/周）是否耗尽：提示模式在聊天中推荐账号；自动模式切换到余量最多的账号并可发送 Continue.。每 Agent 每小时至多 3 次自动切换，1 小时内不切回刚离开的账号。",
+                true,
+              )}
+            </View>
+          );
+        })()}
         {(error || snapshot.error || quotas.error) && (
           <Text accessibilityRole="alert" style={{ color: colors.statusDanger }}>
             {error || snapshot.error?.message || quotas.error?.message}

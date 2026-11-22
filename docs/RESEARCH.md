@@ -48,6 +48,12 @@
 
 新增 0.15.4、0.16.0-beta.1、0.16.0-beta.2 的锁定 SDK/运行时，合计七个真实版本；新增 metadata/background 的 IPC 保留断言。运行时账号、安全存储、默认值和绑定逻辑不需要改写；支持上限扩展到 `<0.17.0`，保留 0.13 与 0.17+ 的拒绝测试。Codex clientInfo 版本同时更新，并加入发布版本同步断言。
 
+## v0.2.0：当前 0.17 版本适配
+
+核对桌面端与实际 daemon 均为 0.17.1，并比对 `@getpaseo/plugin`、`@getpaseo/protocol`、`@getpaseo/server` 在 0.16.0-beta.2 到 0.17.1 之间的变更。0.17 在 `PluginSessionOpenRequest` 中新增可选 `appendSystemPrompt`，移除 `agent.turn.after` 中已弃用的空 `timeline` 字段，并新增 `registerWorktreeManager`、`addWorkspaceRowBadgeItem` 以及 Usage 可选字段（`durationSeconds`、`observedAt`、`launch`、`provider`）。本插件不依赖已移除的 `timeline` 字段，透传并保留 `appendSystemPrompt` 与原有只读字段。
+
+新增 0.16.2、0.17.1 的锁定 SDK/运行时，合计九个真实版本；支持上限扩展到 `<0.18.0`，保留 0.13 与 0.18+ 的拒绝测试。
+
 上游链接：
 - https://github.com/getpaseo/paseo/tree/v0.14.0-beta.1
 - https://github.com/dutchakdev/paseo-plugin-account-switcher/tree/v0.7.1

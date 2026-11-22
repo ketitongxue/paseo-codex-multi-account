@@ -1,6 +1,7 @@
 import type { PluginClientContext, PluginSidebarItemProps } from "@getpaseo/plugin/client";
 import { SidebarRow } from "@getpaseo/plugin/client/ui";
 import { AccountsScreen } from "./client/accounts";
+import { FailoverTimelineRow } from "./client/failover";
 import * as rpc from "./shared/contracts";
 
 function Sidebar({ openScreen, currentScreen }: PluginSidebarItemProps) {
@@ -17,6 +18,12 @@ export default function contribute(client: PluginClientContext) {
   const cleanup = [
     client.addScreen({ id: "accounts", title: "Codex 账号与额度", Component: AccountsScreen }),
     client.addSidebarHeaderItem({ id: "accounts", title: "Codex 账号与额度", Component: Sidebar }),
+    client.addTimelineRenderer({
+      kind: rpc.FAILOVER_KIND,
+      version: 1,
+      schema: rpc.FailoverNotice,
+      Component: FailoverTimelineRow,
+    }),
     client.addCommandCenterItem({
       id: "codex-accounts",
       title: "Codex 账号与额度",

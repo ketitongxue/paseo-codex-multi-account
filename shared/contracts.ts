@@ -83,10 +83,18 @@ export const AccountView = Account.extend({
   loginBusy: z.boolean(),
 });
 export type AccountView = z.infer<typeof AccountView>;
+export const FailoverSettings = z
+  .object({
+    mode: z.enum(["off", "offer", "auto"]),
+    autoContinue: z.boolean(),
+  })
+  .strict();
+export type FailoverSettings = z.infer<typeof FailoverSettings>;
 export const Snapshot = z.object({
   accounts: z.array(AccountView),
   defaultId: Id.nullable(),
   bindings: z.record(z.string(), Binding),
+  failover: FailoverSettings,
 });
 export type Snapshot = z.infer<typeof Snapshot>;
 export const UsageRow = z.object({
@@ -165,3 +173,24 @@ export const releaseBinding = defineRpc({
   input: z.object({ agentId: Id }),
   output: empty,
 });
+export const setFailover = defineRpc({
+  name: "failover.set",
+  input: FailoverSettings,
+  output: empty,
+});
+// Timeline item appended by the daemon after a turn that exhausted an account.
+// Rendered by the client through addTimelineRenderer; best effort only.
+export const FAILOVER_KIND = "codex-failover";
+export const FailoverNotice = z
+  .object({
+    variant: z.enum(["exhausted", "switched", "failed"]),
+    at: z.string(),
+    fromName: z.string(),
+    toName: z.string().optional(),
+    resetsAt: z.string().nullable().optional(),
+    auto: z.boolean().optional(),
+    continued: z.boolean().optional(),
+    reason: z.string().optional(),
+  })
+  .strict();
+export type FailoverNotice = z.infer<typeof FailoverNotice>;

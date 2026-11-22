@@ -5,7 +5,7 @@ import { Name } from "../shared/contracts";
 import { homeConfig, type KeyringRead, readCredential } from "./credentials";
 import { PublicError, safeMessage } from "./errors";
 import { canonicalHome } from "./files";
-import { homeId, type Store } from "./store";
+import { homeId, resolveFailover, type Store } from "./store";
 
 export class Accounts {
   constructor(
@@ -110,7 +110,12 @@ export class Accounts {
           busy(account.id),
         ),
       );
-    return { accounts, defaultId: state.defaultId, bindings: state.bindings };
+    return {
+      accounts,
+      defaultId: state.defaultId,
+      bindings: state.bindings,
+      failover: resolveFailover(state.failover),
+    };
   }
   async save(homeInput: string, name: string): Promise<Account> {
     const home = await canonicalHome(homeInput, this.userHome);

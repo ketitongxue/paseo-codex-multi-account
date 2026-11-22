@@ -1,6 +1,6 @@
 # paseo-codex-multi-account
 
-面向 **Paseo 0.14 / 0.15 / 0.16 系列** 的 Codex / ChatGPT 多账号插件。独立 `CODEX_HOME`、安全登录、账号保存/删除、逐 Agent 选择/切换，以及订阅额度 Usage Source。v0.1.2 的范围为 `>=0.14.0-beta.1 <0.17.0`，daemon 和客户端均需满足；已验证七个真实版本，包含当前稳定版 0.15.4 与 0.16.0-beta.2，具体见 [兼容性说明](docs/COMPATIBILITY.md)。
+面向 **Paseo 0.14 / 0.15 / 0.16 / 0.17 系列** 的 Codex / ChatGPT 多账号插件。独立 `CODEX_HOME`、安全登录、账号保存/删除、逐 Agent 选择/切换、订阅额度 Usage Source，以及额度耗尽后的 failover。v0.2.0 的范围为 `>=0.14.0-beta.1 <0.18.0`，daemon 和客户端均需满足；已验证九个真实版本，包含 0.15.4、0.16.2 与当前 0.17.1，具体见 [兼容性说明](docs/COMPATIBILITY.md)。
 
 [English overview](OVERVIEW.md) · [中文市场介绍](OVERVIEW.zh-CN.md) · [发布准备与审核流程](docs/PUBLISHING.md)
 
@@ -15,6 +15,7 @@
 - 新账号由官方 `codex app-server` 进行设备码或本机浏览器登录；严格 `keyring` + `direct`，不能使用安全存储时失败，**不使用会回落明文的 auto 模式**。登录链接/设备码仅在内存，关闭弹窗可取消；离开页面后可用“查看登录”重新打开。
 - 保存路径与名称、设置新 Agent 的默认账号、删除/隐藏条目；托管账号可明确确认后同时注销并删除自己的 home。外部 home 永不通过插件注销或删除。
 - 每个 Agent 的账号绑定持久化；默认值变化不会影响已有 Agent。目标丢失、身份改变、缺少稳定 ChatGPT account ID 或切换未确认时拒绝启动，不能静默回落其他账号。
+- **额度耗尽 failover（v0.2.0）**：turn 结束后检测绑定账号的账号级窗口（5 小时/周）是否 100% 且重置时间未到。默认在聊天时间线提示耗尽并推荐余量最多的账号（`/codex-account 名称` 一键切换）；可在账号页改为自动切换，并可选向 Agent 发送 `Continue.` 继续被中断的任务。自动切换每 Agent 每小时至多 3 次、1 小时内不切回刚离开的账号、被限流或切换失败时回落为提示；切换本身仍走带确认与回滚的同一 reload 流程。
 - 原生 Usage Source 提供全局账号额度及当前会话额度；插件页面按 home 展示 5 小时/周/其他明确窗口、模型专项限额、credits、重置时间和错误。相同 ChatGPT 身份的多个 home 在该 Usage Source 中合并。
 - **不读写 Pi 配置/认证文件，不改 provider command，不安装全局启动器。**
 
@@ -24,6 +25,7 @@
 - 现有 `auth.json` 可能本来就是明文。插件只读取它；不会自动迁移、删除或声称已经加密。新登录只允许在插件创建的 keyring-only home 中进行。
 - **独立 home 不一定共享会话历史。** 已有会话切换前，官方 CLI 必须能在目标 home 读取同一原生 thread。不可见时拒绝切换，请用目标账号新建 Agent，或由你自行配置共享历史。插件不复制历史或数据库、不以空白会话替代原上下文。
 - 切换通过 `agent.reload()` 重开会话，不发起模型 turn。`active` 表示 reload 成功且目标 session-open 环境已确认，并非独立的进程启动认证回执。Paseo 可能懒启动原生进程。
+- failover 只认账号级窗口（带 summary 标记的 5 小时/周窗口）100% 且重置未到；模型专项限额、feature 窗口、无重置时间或重置已过的满窗都不触发。失败的 turn 会强制刷新该账号额度（受错误退避约束），完成的 turn 只读缓存，不逐 turn 请求服务端。聊天中的 failover 提示行是尽力而为：随 daemon 内存存活，追加失败不影响切换本身。
 - Paseo 没有原子的“检查空闲并重载”。切换时不要从另一个客户端同时发消息。失败尝试恢复原绑定；无法确认回退时标记 `unconfirmed`，下一次打开会拒绝。原账号未知的旧 Agent 也可以显式切换，但失败时不能猜测回退身份。
 - daemon 支持 macOS Keychain，以及 Linux Secret Service（需 `secret-tool`，Codex direct keyring 后端）。Windows 和 Codex encrypted `secrets` keyring 后端尚未验证/支持；失败不回落文件。客户端 UI 使用 React Native，可在 Paseo 桌面、Web、手机显示。
 - 不要同时使用另一个切换器改写 Codex 启动命令。选中账号时发现 provider 自定义 command、API-key/自定义 endpoint 覆盖会拒绝启动，而不会替你改配置。
@@ -36,7 +38,7 @@
 cd /absolute/path/to/paseo-codex-multi-account
 npm ci --ignore-scripts
 npm run check
-# 确认 daemon 和客户端均满足 >=0.14.0-beta.1 <0.17.0，并且你信任插件后执行：
+# 确认 daemon 和客户端均满足 >=0.14.0-beta.1 <0.18.0，并且你信任插件后执行：
 paseo plugin install "$PWD"
 paseo plugin ls
 ```
@@ -67,7 +69,8 @@ git:ketitongxue/paseo-codex-multi-account
 2. “创建安全登录账号”，完成设备码授权；也可先切换为本机浏览器模式。浏览器模式需要在 **daemon 所在电脑** 完成 localhost 回调，远程手机使用设备码更合适。
 3. 设为默认，或填写 daemon 上的工作目录并选择“用此账号创建 Agent”。
 4. 在目标聊天输入 `/codex-accounts` 打开带 Agent 上下文的管理页，选择“切换当前 Agent”；或输入 `/codex-account keti`。名称不唯一时使用页面中的稳定 ID。
-5. 删除前取消默认、切走其 Agent；已归档/已删除 Agent 可“释放绑定”。释放会留下非秘密拒绝回落标记；若未来再用该 Agent，必须显式重选账号。
+5. 额度耗尽 failover：账号页顶部的“额度耗尽 failover”选择 **关闭 / 提示切换 / 自动切换**（默认提示切换；自动模式下可再选择切换后是否发送 `Continue.`）。触发时聊天里会出现提示行；自动切换的目标是余量最多且未耗尽的已登录账号。
+6. 删除前取消默认、切走其 Agent；已归档/已删除 Agent 可“释放绑定”。释放会留下非秘密拒绝回落标记；若未来再用该 Agent，必须显式重选账号。
 
 默认删除是**忘记/隐藏**。重新发现可以恢复被隐藏的外部目录。托管目录不在自动扫描路径中：忘记前记下路径；需要彻底删除应在删除确认框明确选择“注销并永久删除托管 home”。插件卸载不会自动删除账号数据。
 
@@ -136,6 +139,6 @@ npm run screenshot             # 可选：已安装 Chrome；只渲染合成数�
 npm pack                       # 生成可安装发布包
 ```
 
-测试使用临时 HOME/PASEO_HOME、合成 JWT 和假 Codex app-server；七个真实 Paseo 版本的 SDK 类型检查、编译器和插件子进程运行时均包含在 `npm run check` 内。兼容性测试依赖只作为开发依赖，不随生产安装加载。没有替你执行真实 OAuth 登录、真实模型 turn 或生产聊天切换。
+测试使用临时 HOME/PASEO_HOME、合成 JWT 和假 Codex app-server；九个真实 Paseo 版本的 SDK 类型检查、编译器和插件子进程运行时均包含在 `npm run check` 内。兼容性测试依赖只作为开发依赖，不随生产安装加载。没有替你执行真实 OAuth 登录、真实模型 turn 或生产聊天切换。
 
 研究与计划：[docs/RESEARCH.md](docs/RESEARCH.md)；验证记录：[docs/VALIDATION.md](docs/VALIDATION.md)；安全边界：[SECURITY.md](SECURITY.md)；市场发布：[docs/PUBLISHING.md](docs/PUBLISHING.md)。

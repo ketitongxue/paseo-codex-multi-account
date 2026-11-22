@@ -6,7 +6,7 @@ Suggested title: **Codex multi-account**
 
 ### Source
 
-https://github.com/ketitongxue/paseo-codex-multi-account/tree/v0.1.2
+https://github.com/ketitongxue/paseo-codex-multi-account/tree/v0.2.0
 
 ### Categories
 
@@ -16,13 +16,13 @@ https://github.com/ketitongxue/paseo-codex-multi-account/tree/v0.1.2
 
 ### Additional context
 
-This plugin manages Codex/ChatGPT subscription accounts in independent `CODEX_HOME` directories. It supports discovery and reuse of existing homes, official CLI sign-in with strict direct OS-keyring storage for new managed accounts, per-agent selection and idle switching, and account quota display through a screen and Paseo Usage Source.
+This plugin manages Codex/ChatGPT subscription accounts in independent `CODEX_HOME` directories. It supports discovery and reuse of existing homes, official CLI sign-in with strict direct OS-keyring storage for new managed accounts, per-agent selection and idle switching, account quota display through a screen and Paseo Usage Source, and post-turn quota failover (defaulting to a best-effort chat timeline notice recommending the roomiest account, with opt-in automatic switching and optional `Continue.` resume bounded by per-hour rate limits and cooldowns).
 
 The repository includes English and Simplified Chinese overviews, a PNG interface preview using synthetic data, an npm shrinkwrap with exact dependency sources/integrity, and a preparation command using `npm ci --omit=dev --ignore-scripts`. The preview renders the current account component; it is not evidence of live OAuth or production conversation switching.
 
 Data access, the fixed OpenAI quota endpoint, transient login information, agent-tool results that can reach model context, and deletion behavior are documented in the overviews and SECURITY.md. The plugin does not modify Pi configuration or replace provider launch commands.
 
-This is an update to the existing listing `ketitongxue/codex-multi-account`. Tested Paseo releases: 0.14.0-beta.1, 0.14.0-beta.2, 0.14.0, 0.15.0-beta.1, 0.15.4, 0.16.0-beta.1, 0.16.0-beta.2; supported range `>=0.14.0-beta.1 <0.17.0`. Hosts with addHook use agent.open.before, with a legacy fallback for older hosts. The UI currently uses Simplified Chinese. macOS direct Keychain is the primary daemon platform; Linux Secret Service is implemented but not real-machine verified. Windows and the Codex encrypted secrets backend are not supported.
+This is an update to the existing listing `ketitongxue/codex-multi-account`. Tested Paseo releases: 0.14.0-beta.1, 0.14.0-beta.2, 0.14.0, 0.15.0-beta.1, 0.15.4, 0.16.0-beta.1, 0.16.0-beta.2, 0.16.2, 0.17.1; supported range `>=0.14.0-beta.1 <0.18.0`. Hosts with addHook use agent.open.before and agent.turn.after, with legacy fallbacks for older hosts. The UI currently uses Simplified Chinese. macOS direct Keychain is the primary daemon platform; Linux Secret Service is implemented but not real-machine verified. Windows and the Codex encrypted secrets backend are not supported.
 
 Existing chat switching requires the target home to see the same native thread. It is refused when history is isolated; no empty conversation is silently substituted. Real interactive OAuth, production conversation switching and mobile visual acceptance remain unverified.
 

@@ -108,6 +108,37 @@ export class RateLimited extends PublicError {
     super("额度接口限流，请稍后重试。");
   }
 }
+// Only account-wide windows (5-hour/weekly, built with summary: true) prove that the
+// account cannot serve an ordinary turn. Model-specific and feature windows do not,
+// and a full window whose reset time already passed does not either.
+export function exhaustedWindows(
+  report: Report,
+  now = Date.now(),
+): Array<{
+  label: string;
+  resetsAt: string | null;
+}> {
+  if (report.status !== "available") return [];
+  return report.windows
+    .filter(
+      (window) =>
+        window.summary === true &&
+        typeof window.usedPct === "number" &&
+        window.usedPct >= 100 &&
+        window.resetsAt != null &&
+        Number.isFinite(Date.parse(window.resetsAt)) &&
+        Date.parse(window.resetsAt) > now,
+    )
+    .map((window) => ({ label: window.label, resetsAt: window.resetsAt ?? null }));
+}
+// Tightest account-wide remaining percentage, for ranking switch candidates.
+export function minRemainingPct(report: Report): number | null {
+  if (report.status !== "available") return null;
+  const values = report.windows
+    .map((window) => (window.summary === true ? window.remainingPct : undefined))
+    .filter((value): value is number => typeof value === "number");
+  return values.length ? Math.min(...values) : null;
+}
 export async function fetchUsage(
   auth: Credential,
   fetchApi: typeof fetch = fetch,
@@ -276,6 +307,10 @@ export class Usage {
   }
   forget(id: string): void {
     this.cache.delete(id);
+  }
+  // Last cached row without touching the network or the retry backoff.
+  peek(id: string): UsageRow | null {
+    return this.cache.get(id)?.row ?? null;
   }
   source(): UsageSourceRegistration {
     return {

@@ -2,7 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { lstat, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { Account, Binding } from "../shared/contracts";
+import {
+  Account,
+  Binding,
+  FailoverSettings,
+  type FailoverSettings as FailoverSettingsValue,
+} from "../shared/contracts";
 import { PublicError } from "./errors";
 import { atomicWrite, missing, optionalText, privateDir } from "./files";
 
@@ -14,9 +19,15 @@ const Registry = z
     hidden: z.array(z.string()),
     bindings: z.record(z.string(), Binding),
     released: z.array(z.string()).default([]),
+    failover: FailoverSettings.optional(),
   })
   .strict();
 export type Registry = z.infer<typeof Registry>;
+// Older registries predate the failover setting; they read as the safe default.
+export const DEFAULT_FAILOVER: FailoverSettingsValue = { mode: "offer", autoContinue: true };
+export function resolveFailover(value: Registry["failover"]): FailoverSettingsValue {
+  return value ?? DEFAULT_FAILOVER;
+}
 export function homeId(home: string): string {
   return `home-${createHash("sha256").update(home).digest("hex").slice(0, 24)}`;
 }

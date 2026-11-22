@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { percent, usageProblem } from "../client/format";
 
 vi.mock("@getpaseo/plugin/client/ui", () => ({ SidebarRow: () => null }));
+vi.mock("react-native", () => ({ Text: "Text", View: "View" }));
 vi.mock("../client/accounts", () => ({ AccountsScreen: () => null }));
 
 import contribute from "../index.client";
@@ -22,12 +23,13 @@ describe("client registration and display", () => {
       usageProblem({ status: "unavailable", problem: { kind: "rejected", status: 401 } }),
     ).toContain("401");
   });
-  it("registers a screen, sidebar, agent command and both slash commands, all cleaned up", async () => {
+  it("registers a screen, sidebar, timeline renderer, agent command and both slash commands, all cleaned up", async () => {
     const remove = vi.fn(),
       slash: Array<{ name: string; onSubmit: (context: unknown) => Promise<void> }> = [];
     const client = {
       addScreen: vi.fn(() => remove),
       addSidebarHeaderItem: vi.fn(() => remove),
+      addTimelineRenderer: vi.fn(() => remove),
       addCommandCenterItem: vi.fn(() => remove),
       addSlashCommand: vi.fn((item) => {
         slash.push(item);
@@ -35,6 +37,9 @@ describe("client registration and display", () => {
       }),
     };
     const cleanup = contribute(client as unknown as PluginClientContext);
+    expect(client.addTimelineRenderer).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "codex-failover", version: 1 }),
+    );
     expect(slash.map((entry) => entry.name)).toEqual(["codex-accounts", "codex-account"]);
     const openScreen = vi.fn();
     await slash[1].onSubmit({ args: "", agent: { id: "agent-one" }, openScreen });
@@ -54,6 +59,6 @@ describe("client registration and display", () => {
     });
     expect(rpc.mock.calls[1][1]).toEqual({ agentId: "agent-one", accountId: "account-one" });
     await cleanup();
-    expect(remove).toHaveBeenCalledTimes(5);
+    expect(remove).toHaveBeenCalledTimes(6);
   });
 });

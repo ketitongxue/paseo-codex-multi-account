@@ -2,14 +2,14 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { defineAgentTool } from "@getpaseo/plugin/server";
 import { z } from "zod";
 import { AUTH_OVERRIDES } from "./server/codex-rpc";
-import { registerSessionOpenHook } from "./server/compatibility";
+import { registerSessionOpenHook, registerTurnEndedHook } from "./server/compatibility";
 import { Controller } from "./server/controller";
 import { PublicError, safe } from "./server/errors";
 import * as rpc from "./shared/contracts";
 
 export default function contribute(server: PluginServerContext) {
   const controller = new Controller();
-  const { accounts, usage, logins, switching } = controller;
+  const { accounts, usage, logins, switching, failover } = controller;
   server.handle(rpc.listAccounts, () => safe(() => accounts.snapshot((id) => logins.busy(id))));
   server.handle(rpc.saveAccount, ({ home, name }) => safe(() => accounts.save(home, name)));
   server.handle(rpc.createAccount, ({ name }) => safe(() => accounts.store.create(name)));
@@ -47,6 +47,12 @@ export default function contribute(server: PluginServerContext) {
   );
   server.handle(rpc.releaseBinding, ({ agentId }, { paseo }) =>
     safe(() => controller.release(agentId, paseo)),
+  );
+  server.handle(rpc.setFailover, (settings) =>
+    safe(async () => {
+      await controller.setFailover(settings);
+      return {};
+    }),
   );
   server.registerUsageSource(usage.source());
   const listTool = defineAgentTool({
@@ -98,7 +104,11 @@ export default function contribute(server: PluginServerContext) {
         : result;
     }),
   );
+  const removeTurnHook = registerTurnEndedHook(server, (event, context) =>
+    failover.onTurnEnded(event, context),
+  );
   return async () => {
+    removeTurnHook();
     removeHook();
     await controller.close();
   };

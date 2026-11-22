@@ -2,9 +2,11 @@ import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
+import type { FailoverSettings } from "../shared/contracts";
 import { Accounts } from "./accounts";
 import { CodexRpc } from "./codex-rpc";
 import { PublicError } from "./errors";
+import { Failover } from "./failover";
 import { Logins } from "./login";
 import { Store } from "./store";
 import { nativePreflight, Switching } from "./switching";
@@ -17,6 +19,7 @@ export class Controller {
   readonly usage: Usage;
   readonly logins: Logins;
   readonly switching: Switching;
+  readonly failover: Failover;
   private mutations = new Set<string>();
   constructor(
     readonly env = process.env,
@@ -27,11 +30,9 @@ export class Controller {
     this.accounts = new Accounts(new Store(resolve(root)), userHome, env);
     this.usage = new Usage(this.accounts);
     this.logins = new Logins(this.accounts, command, env);
-    this.switching = new Switching(
-      this.accounts,
-      (id) => this.logins.busy(id) || this.mutations.has(id),
-      nativePreflight(command, env),
-    );
+    const busy = (id: string) => this.logins.busy(id) || this.mutations.has(id);
+    this.switching = new Switching(this.accounts, busy, nativePreflight(command, env));
+    this.failover = new Failover(this.accounts, this.usage, this.switching, busy);
   }
   async login(accountId: string, mode: "device" | "browser") {
     const account = await this.accounts.resolve(accountId);
@@ -114,6 +115,11 @@ export class Controller {
       if (!state.released.includes(agentId)) state.released.push(agentId);
     });
     return {};
+  }
+  async setFailover(settings: FailoverSettings): Promise<void> {
+    await this.accounts.store.change((state) => {
+      state.failover = settings;
+    });
   }
   async close(): Promise<void> {
     await this.logins.close();
