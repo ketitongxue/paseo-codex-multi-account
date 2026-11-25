@@ -2,7 +2,11 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { defineAgentTool } from "@getpaseo/plugin/server";
 import { z } from "zod";
 import { AUTH_OVERRIDES } from "./server/codex-rpc";
-import { registerSessionOpenHook, registerTurnEndedHook } from "./server/compatibility";
+import {
+  registerSessionOpenHook,
+  registerTurnEndedHook,
+  registerTurnStartedHook,
+} from "./server/compatibility";
 import { Controller } from "./server/controller";
 import { PublicError, safe } from "./server/errors";
 import * as rpc from "./shared/contracts";
@@ -104,10 +108,14 @@ export default function contribute(server: PluginServerContext) {
         : result;
     }),
   );
+  const removeTurnStartHook = registerTurnStartedHook(server, ({ agent, turnId }) => {
+    if (agent.provider === "codex") switching.turnStarted(agent.id, turnId);
+  });
   const removeTurnHook = registerTurnEndedHook(server, (event, context) =>
     failover.onTurnEnded(event, context),
   );
   return async () => {
+    removeTurnStartHook();
     removeTurnHook();
     removeHook();
     await controller.close();

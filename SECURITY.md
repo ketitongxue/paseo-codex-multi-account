@@ -16,6 +16,8 @@ Session-open only sets the selected `CODEX_HOME`. It rejects known authenticatio
 
 Switches require an inactive agent and native history visibility in the target home. Both the target and previous accounts remain reserved until reload/rollback finishes; deletion, re-login and binding release cannot invalidate the in-flight operation. Only an interactive refresh hook confirms the selection; a history read does not. Reload is not atomic with messages from another client; do not send concurrently. The active binding confirms a successful host reload and observed session-open selection, not an independent native-process authentication receipt. Failed rollback remains unconfirmed. Released bindings leave a tombstone preventing accidental default-CLI fallback on resume.
 
+Quota failover skips missing or unmatched turn IDs. A manual switch or a newer observed turn invalidates a pending check, and the plugin serializes account switches with its own continuation send. Paseo can still accept messages from other clients during reload.
+
 Plugin disable/removal necessarily removes its hooks and tools; Paseo can then launch native sessions using its ordinary defaults. Stop/archive affected agents before disabling if you must preserve strict account pinning. Do not treat plugin disable as an authentication revocation mechanism.
 
 ## Files and deletion

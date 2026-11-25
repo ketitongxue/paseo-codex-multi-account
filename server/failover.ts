@@ -5,7 +5,7 @@ import type { Accounts } from "./accounts";
 import type { TurnEndedEvent } from "./compatibility";
 import { safeMessage } from "./errors";
 import { resolveFailover } from "./store";
-import type { Switching } from "./switching";
+import { StaleTurn, type Switching } from "./switching";
 import { exhaustedWindows, minRemainingPct, type Usage } from "./usage";
 
 type PaseoApi = PluginHookContext["paseo"];
@@ -18,7 +18,6 @@ const NO_RETURN_MS = 3_600_000;
 const iso = (value: number) => new Date(value).toISOString();
 
 export class Failover {
-  private handledTurns = new Set<string>();
   private autoAt = new Map<string, number[]>();
   private leftAt = new Map<string, Map<string, number>>();
   private offered = new Map<string, { accountId: string; resetsAt: number }>();
@@ -32,20 +31,30 @@ export class Failover {
   ) {}
 
   async onTurnEnded(event: TurnEndedEvent, context: PluginHookContext): Promise<void> {
+    if (event.agent.provider !== "codex") return;
+    const origin = this.switching.turn(event.agent.id, event.turnId);
+    if (!origin || origin.ended) return;
+    origin.ended = true;
+    const currentTurn = () => this.switching.turn(event.agent.id, event.turnId) === origin;
     try {
-      await this.evaluate(event, context.paseo);
+      await this.evaluate(event, context.paseo, currentTurn);
     } catch (error) {
       console.error("[failover] turn check failed", error);
+    } finally {
+      this.switching.forgetTurn(event.agent.id, origin);
     }
   }
 
-  private async evaluate(event: TurnEndedEvent, paseo: PaseoApi): Promise<void> {
-    if (event.agent.provider !== "codex") return;
+  private async evaluate(
+    event: TurnEndedEvent,
+    paseo: PaseoApi,
+    currentTurn: () => boolean,
+  ): Promise<void> {
     // A canceled turn stopped by the user says nothing about the account.
     if (event.outcome.kind === "canceled") return;
     const state = await this.accounts.store.read();
     const settings = resolveFailover(state.failover);
-    if (settings.mode === "off") return;
+    if (!currentTurn() || settings.mode === "off") return;
     const agentId = event.agent.id;
     const binding = Object.hasOwn(state.bindings, agentId) ? state.bindings[agentId] : undefined;
     // Only agents this plugin manages; unconfirmed bindings need an explicit re-selection.
@@ -58,10 +67,9 @@ export class Failover {
       event.outcome.kind === "failed"
         ? (await this.usage.list(binding.accountId, true))[0]
         : this.usage.peek(binding.accountId);
-    if (!current) return;
+    if (!currentTurn() || !current) return;
     const exhausted = exhaustedWindows(current.report, now);
     if (!exhausted.length) return;
-    if (event.turnId !== null && this.handledTurns.has(event.turnId)) return;
 
     const account = state.accounts.find((entry) => entry.id === binding.accountId);
     const fromName = account?.name ?? binding.accountId;
@@ -70,10 +78,10 @@ export class Failover {
       (latest, window) => Math.max(latest, window.resetsAt ? Date.parse(window.resetsAt) : 0),
       0,
     );
-    if (event.turnId !== null) this.rememberTurn(event.turnId);
 
     if (settings.mode === "auto" && this.autoAllowed(agentId, now)) {
       const target = (await this.candidates(agentId, binding.accountId, now))[0];
+      if (!currentTurn()) return;
       if (!target) {
         await this.notice(paseo, agentId, {
           variant: "exhausted",
@@ -85,17 +93,22 @@ export class Failover {
         return;
       }
       try {
-        await this.switching.switch(agentId, target.account.id, paseo);
-        this.recordAuto(agentId, binding.accountId, now);
         let continued = false;
-        if (settings.autoContinue && event.outcome.kind === "failed") {
+        const continueTurn = async () => {
           try {
             await paseo.agents.ref(agentId).send("Continue.");
             continued = true;
           } catch (error) {
             console.error("[failover] continue message failed", error);
           }
-        }
+        };
+        await this.switching.switch(agentId, target.account.id, paseo, {
+          source: binding,
+          currentTurn,
+          afterCommit:
+            settings.autoContinue && event.outcome.kind === "failed" ? continueTurn : undefined,
+        });
+        this.recordAuto(agentId, binding.accountId, now);
         await this.notice(paseo, agentId, {
           variant: "switched",
           at: iso(now),
@@ -105,6 +118,7 @@ export class Failover {
           continued,
         });
       } catch (error) {
+        if (error instanceof StaleTurn) return;
         await this.notice(paseo, agentId, {
           variant: "failed",
           at: iso(now),
@@ -121,6 +135,7 @@ export class Failover {
     if (previous && previous.accountId === binding.accountId && previous.resetsAt === resetMs)
       return;
     const candidates = await this.candidates(agentId, binding.accountId, now);
+    if (!currentTurn()) return;
     this.offered.set(agentId, { accountId: binding.accountId, resetsAt: resetMs });
     await this.notice(paseo, agentId, {
       variant: "exhausted",
@@ -183,11 +198,6 @@ export class Failover {
       this.leftAt.set(agentId, departed);
     }
     departed.set(fromAccountId, now);
-  }
-
-  private rememberTurn(turnId: string): void {
-    if (this.handledTurns.size > 512) this.handledTurns.clear();
-    this.handledTurns.add(turnId);
   }
 
   /** Chat rows are best effort: a refused or lost row never undoes a switch. */

@@ -6,8 +6,32 @@ import { PublicError } from "./errors";
 
 type PaseoApi = PluginHandlerContext["paseo"];
 export type Preflight = (account: Account, threadId: string | null) => Promise<void>;
+export class StaleTurn extends Error {}
+interface AutomaticSwitch {
+  source: Binding;
+  currentTurn: () => boolean;
+  afterCommit?: () => Promise<void>;
+}
 export class Switching {
-  private applying = new Set<string>();
+  private applying = new Map<string, "switch" | "continue">();
+  // Keep at most one pending or evaluating turn per agent, including lost end notifications.
+  private turns = new Map<string, { id: string; ended: boolean }>();
+  turnStarted(agentId: string, turnId: string | null): void {
+    this.turns.delete(agentId);
+    if (turnId === null || this.applying.get(agentId) === "switch") return;
+    if (this.turns.size >= 4096) {
+      const oldest = this.turns.keys().next();
+      if (!oldest.done) this.turns.delete(oldest.value);
+    }
+    this.turns.set(agentId, { id: turnId, ended: false });
+  }
+  turn(agentId: string, turnId: string | null) {
+    const current = this.turns.get(agentId);
+    return current && current.id === turnId ? current : undefined;
+  }
+  forgetTurn(agentId: string, turn: { id: string }): void {
+    if (this.turns.get(agentId) === turn) this.turns.delete(agentId);
+  }
   private overrides = new Map<string, Binding>();
   private observed = new Map<string, string>();
   private targets = new Map<string, Set<string>>();
@@ -80,9 +104,32 @@ export class Switching {
     const { [ACCOUNT_ENV]: _selector, ...env } = request.env;
     return { ...request, env: { ...env, CODEX_HOME: account.home } };
   }
-  async switch(agentId: string, selector: string, paseo: PaseoApi): Promise<Binding> {
+  async switch(
+    agentId: string,
+    selector: string,
+    paseo: PaseoApi,
+    automatic?: AutomaticSwitch,
+  ): Promise<Binding> {
     if (this.applying.has(agentId)) throw new PublicError("此 Agent 正在切换账号。");
-    this.applying.add(agentId);
+    this.applying.set(agentId, "switch");
+    if (!automatic) this.turns.delete(agentId);
+    try {
+      const binding = await this.apply(agentId, selector, paseo, automatic);
+      if (automatic?.afterCommit && automatic.currentTurn()) {
+        this.applying.set(agentId, "continue");
+        await automatic.afterCommit();
+      }
+      return binding;
+    } finally {
+      this.applying.delete(agentId);
+    }
+  }
+  private async apply(
+    agentId: string,
+    selector: string,
+    paseo: PaseoApi,
+    automatic?: AutomaticSwitch,
+  ): Promise<Binding> {
     let previous: Binding | undefined;
     let started = false;
     try {
@@ -121,8 +168,35 @@ export class Switching {
       };
       // Persist unknown before changing the running session. A crash never leaves an assumed active account.
       await this.accounts.store.change((registry) => {
+        if (automatic) {
+          const source = Object.hasOwn(registry.bindings, agentId)
+            ? registry.bindings[agentId]
+            : undefined;
+          if (
+            !automatic.currentTurn() ||
+            registry.released.includes(agentId) ||
+            source?.accountId !== automatic.source.accountId ||
+            source.identityKey !== automatic.source.identityKey ||
+            source.status !== automatic.source.status
+          )
+            throw new StaleTurn();
+        }
         registry.bindings[agentId] = { ...binding, status: "unconfirmed" };
       });
+      if (automatic && !automatic.currentTurn()) {
+        // The provisional write yielded, but the running session still uses the source.
+        await this.accounts.store.change((registry) => {
+          const current = registry.bindings[agentId];
+          if (
+            !registry.released.includes(agentId) &&
+            current?.status === "unconfirmed" &&
+            current.accountId === binding.accountId &&
+            current.identityKey === binding.identityKey
+          )
+            registry.bindings[agentId] = automatic.source;
+        });
+        throw new StaleTurn();
+      }
       this.overrides.set(agentId, binding);
       this.observed.delete(agentId);
       started = true;
@@ -174,7 +248,6 @@ export class Switching {
     } finally {
       this.overrides.delete(agentId);
       this.observed.delete(agentId);
-      this.applying.delete(agentId);
       this.targets.delete(agentId);
     }
   }
