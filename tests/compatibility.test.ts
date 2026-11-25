@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { registerSessionOpenHook, type SessionOpenHandler } from "../server/compatibility";
+import {
+  registerSessionOpenHook,
+  registerTurnStartedHook,
+  type SessionOpenHandler,
+} from "../server/compatibility";
 
 describe("Paseo lifecycle capability adapter", () => {
   const handler: SessionOpenHandler = async () => undefined;
@@ -15,6 +19,17 @@ describe("Paseo lifecycle capability adapter", () => {
       host = { before: vi.fn(() => remove) };
     expect(registerSessionOpenHook(host, handler)).toBe(remove);
     expect(host.before).toHaveBeenCalledExactlyOnceWith("agent.session_open", handler);
+  });
+  it("subscribes to turn starts using the host lifecycle API", () => {
+    const handler = vi.fn(),
+      remove = vi.fn(),
+      on = vi.fn(() => remove),
+      addHook = vi.fn(() => remove);
+    expect(registerTurnStartedHook({ on, addHook }, handler)).toBe(remove);
+    expect(addHook).toHaveBeenCalledWith("agent.turn.before", expect.any(Function));
+    expect(on).not.toHaveBeenCalled();
+    expect(registerTurnStartedHook({ on }, handler)).toBe(remove);
+    expect(on).toHaveBeenCalledWith("agent.turn_started", handler);
   });
   it("preserves host binding and the exact teardown function", () => {
     const remove = vi.fn(),

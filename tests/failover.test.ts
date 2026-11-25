@@ -5,6 +5,7 @@ import type {
   PluginSessionOpenRequest,
 } from "@getpaseo/plugin/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { TurnEndedEvent } from "../server/compatibility";
 import { Failover } from "../server/failover";
 import { Switching } from "../server/switching";
 import { exhaustedWindows, minRemainingPct, parseUsage, Usage } from "../server/usage";
@@ -75,6 +76,17 @@ const failed = turn({ kind: "failed", error: { message: "usage limit reached" } 
 const completed = turn({ kind: "completed" });
 function context(paseo: PaseoApi): PluginHookContext {
   return { paseo, signal: new AbortController().signal };
+}
+function finish(failover: Failover, event: TurnEndedEvent, ctx: PluginHookContext) {
+  failover.switching.turnStarted(event.agent.id, event.turnId);
+  return failover.onTurnEnded(event, ctx);
+}
+function gate() {
+  let open!: () => void;
+  const wait = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { open, wait };
 }
 function notice(ref: { timeline: { append: ReturnType<typeof vi.fn> } }) {
   expect(ref.timeline.append).toHaveBeenCalled();
@@ -204,7 +216,7 @@ describe("failover after a turn", () => {
     t.setQuota("keti", 100);
     t.setQuota("cody", 40);
     await t.usage.list(); // warm the cache both accounts are ranked from
-    await t.failover.onTurnEnded(failed, context(host.paseo));
+    await finish(t.failover, failed, context(host.paseo));
     expect(host.ref.reload).not.toHaveBeenCalled();
     expect(notice(host.ref)).toMatchObject({
       variant: "exhausted",
@@ -212,7 +224,8 @@ describe("failover after a turn", () => {
       toName: "cody",
       auto: false,
     });
-    await t.failover.onTurnEnded(
+    await finish(
+      t.failover,
       turn({ kind: "failed", error: { message: "again" } }, "turn-2"),
       context(host.paseo),
     );
@@ -225,7 +238,7 @@ describe("failover after a turn", () => {
     t.setQuota("keti", 100);
     t.setQuota("cody", 40);
     await t.usage.list();
-    await t.failover.onTurnEnded(failed, context(host.paseo));
+    await finish(t.failover, failed, context(host.paseo));
     expect(host.ref.reload).toHaveBeenCalledOnce();
     expect(host.ref.send).toHaveBeenCalledWith("Continue.");
     expect(notice(host.ref)).toMatchObject({
@@ -240,6 +253,149 @@ describe("failover after a turn", () => {
       status: "active",
     });
   });
+  it("ignores a turn delivered after a manual switch even if both accounts are exhausted", async () => {
+    const t = await harness({ mode: "auto", autoContinue: true });
+    const host = daemon(t.switching);
+    t.setQuota("keti", 100);
+    t.setQuota("cody", 100);
+    t.switching.turnStarted(failed.agent.id, failed.turnId);
+    await t.switching.switch(failed.agent.id, t.cody.id, host.paseo);
+    const usage = vi.spyOn(t.usage, "list");
+    await t.failover.onTurnEnded(failed, context(host.paseo));
+    await t.failover.onTurnEnded({ ...failed, turnId: null }, context(host.paseo));
+    expect(usage).not.toHaveBeenCalled();
+    expect(host.ref.timeline.append).not.toHaveBeenCalled();
+    expect(host.ref.reload).toHaveBeenCalledOnce();
+    expect(host.ref.send).not.toHaveBeenCalled();
+  });
+  it("ignores a superseded end and handles the newest observed turn once", async () => {
+    const t = await harness({ mode: "auto", autoContinue: true });
+    const host = daemon(t.switching);
+    t.setQuota("keti", 100);
+    t.switching.turnStarted(failed.agent.id, failed.turnId);
+    t.switching.turnStarted(failed.agent.id, "turn-2");
+    await t.failover.onTurnEnded(failed, context(host.paseo));
+    expect(host.ref.reload).not.toHaveBeenCalled();
+    const latest = { ...failed, turnId: "turn-2" };
+    await Promise.all([
+      t.failover.onTurnEnded(latest, context(host.paseo)),
+      t.failover.onTurnEnded(latest, context(host.paseo)),
+    ]);
+    expect(host.ref.reload).toHaveBeenCalledOnce();
+    expect(host.ref.send).toHaveBeenCalledOnce();
+  });
+  it("discards an in-flight quota check after manually reselecting the same account", async () => {
+    const t = await harness({ mode: "auto", autoContinue: true });
+    const host = daemon(t.switching);
+    t.setQuota("keti", 100);
+    const entered = gate(),
+      finishRead = gate();
+    const list = t.usage.list.bind(t.usage);
+    vi.spyOn(t.usage, "list").mockImplementationOnce(async (...args) => {
+      entered.open();
+      await finishRead.wait;
+      return list(...args);
+    });
+    const pending = finish(t.failover, failed, context(host.paseo));
+    await entered.wait;
+    await t.switching.switch(failed.agent.id, t.keti.id, host.paseo);
+    finishRead.open();
+    await pending;
+    expect(host.ref.reload).toHaveBeenCalledOnce();
+    expect(host.ref.send).not.toHaveBeenCalled();
+    expect(host.ref.timeline.append).not.toHaveBeenCalled();
+    expect((await t.f.store.read()).bindings[failed.agent.id].accountId).toBe(t.keti.id);
+  });
+  it("abandons preflight if a newer turn starts and ends while the host is being inspected", async () => {
+    const t = await harness({ mode: "auto", autoContinue: true });
+    const host = daemon(t.switching);
+    t.setQuota("keti", 100);
+    vi.spyOn(t.switching, "preflight").mockImplementationOnce(async () => {
+      t.switching.turnStarted(failed.agent.id, "newer");
+      await t.failover.onTurnEnded({ ...failed, turnId: "newer" }, context(host.paseo));
+    });
+    await finish(t.failover, failed, context(host.paseo));
+    expect((await t.f.store.read()).bindings[failed.agent.id].accountId).toBe(t.keti.id);
+    expect(host.ref.timeline.append).not.toHaveBeenCalled();
+    expect(host.ref.reload).not.toHaveBeenCalled();
+    expect(host.ref.send).not.toHaveBeenCalled();
+  });
+  it("restores the source without reloading when a newer turn arrives during the provisional write", async () => {
+    const t = await harness({ mode: "auto", autoContinue: true });
+    const host = daemon(t.switching);
+    const agentId = failed.agent.id;
+    const source = (await t.f.store.read()).bindings[agentId];
+    t.setQuota("keti", 100);
+    const change = t.f.store.change.bind(t.f.store);
+    vi.spyOn(t.f.store, "change").mockImplementationOnce((update) =>
+      change(async (state) => {
+        const result = await update(state);
+        expect(state.bindings[agentId]).toMatchObject({
+          accountId: t.cody.id,
+          status: "unconfirmed",
+        });
+        t.switching.turnStarted(agentId, "newer");
+        return result;
+      }),
+    );
+    await finish(t.failover, failed, context(host.paseo));
+    expect((await t.f.store.read()).bindings[agentId]).toEqual(source);
+    expect(host.ref.reload).not.toHaveBeenCalled();
+    expect(host.ref.send).not.toHaveBeenCalled();
+    expect(host.ref.timeline.append).not.toHaveBeenCalled();
+  });
+  it("preserves a registry binding released during preflight", async () => {
+    const t = await harness({ mode: "auto", autoContinue: true });
+    const host = daemon(t.switching);
+    t.setQuota("keti", 100);
+    vi.spyOn(t.switching, "preflight").mockImplementationOnce(async () => {
+      await t.f.store.change((state) => {
+        delete state.bindings[failed.agent.id];
+        state.released.push(failed.agent.id);
+      });
+    });
+    await finish(t.failover, failed, context(host.paseo));
+    const state = await t.f.store.read();
+    expect(state.bindings[failed.agent.id]).toBeUndefined();
+    expect(state.released).toContain(failed.agent.id);
+    expect(host.ref.reload).not.toHaveBeenCalled();
+    expect(host.ref.send).not.toHaveBeenCalled();
+  });
+  it("skips continuation if a new turn arrives during the confirmed account reload", async () => {
+    const t = await harness({ mode: "auto", autoContinue: true });
+    const host = daemon(t.switching);
+    t.setQuota("keti", 100);
+    const reload = host.ref.reload.getMockImplementation();
+    if (!reload) throw new Error("Missing fixture reload");
+    host.ref.reload.mockImplementationOnce(async () => {
+      const result = await reload();
+      t.switching.turnStarted(failed.agent.id, "newer");
+      return result;
+    });
+    await finish(t.failover, failed, context(host.paseo));
+    expect(host.ref.send).not.toHaveBeenCalled();
+    expect(notice(host.ref)).toMatchObject({ variant: "switched", continued: false });
+    expect((await t.f.store.read()).bindings[failed.agent.id].accountId).toBe(t.cody.id);
+  });
+  it("keeps the switched account reserved until the host accepts the continuation", async () => {
+    const t = await harness({ mode: "auto", autoContinue: true });
+    const host = daemon(t.switching);
+    t.setQuota("keti", 100);
+    const sending = gate(),
+      accepted = gate();
+    host.ref.send.mockImplementationOnce(async () => {
+      sending.open();
+      await accepted.wait;
+    });
+    const pending = finish(t.failover, failed, context(host.paseo));
+    await sending.wait;
+    await expect(t.switching.switch(failed.agent.id, t.keti.id, host.paseo)).rejects.toThrow();
+    accepted.open();
+    await pending;
+    expect(host.ref.reload).toHaveBeenCalledOnce();
+    expect(notice(host.ref)).toMatchObject({ variant: "switched", continued: true });
+    await t.switching.switch(failed.agent.id, t.keti.id, host.paseo);
+  });
   it("acts on a completed turn only from the cached report and never sends a message", async () => {
     const t = await harness({ mode: "auto", autoContinue: true }),
       host = daemon(t.switching);
@@ -247,7 +403,7 @@ describe("failover after a turn", () => {
     await t.usage.list();
     const calls = (t.usage as unknown as { fetchApi: ReturnType<typeof vi.fn> }).fetchApi.mock.calls
       .length;
-    await t.failover.onTurnEnded(completed, context(host.paseo));
+    await finish(t.failover, completed, context(host.paseo));
     expect(
       (t.usage as unknown as { fetchApi: ReturnType<typeof vi.fn> }).fetchApi.mock.calls.length,
     ).toBe(calls);
@@ -259,16 +415,18 @@ describe("failover after a turn", () => {
       host = daemon(t.switching);
     t.setQuota("keti", 100);
     await t.usage.list();
-    await t.failover.onTurnEnded(
+    await finish(
+      t.failover,
       { ...failed, outcome: { kind: "canceled", reason: "user" } },
       context(host.paseo),
     );
-    await t.failover.onTurnEnded(
+    await finish(
+      t.failover,
       { ...failed, agent: { ...failed.agent, provider: "pi" } },
       context(host.paseo),
     );
     await t.f.store.change((state) => void delete state.bindings["agent-one"]);
-    await t.failover.onTurnEnded(failed, context(host.paseo));
+    await finish(t.failover, failed, context(host.paseo));
     expect(host.ref.timeline.append).not.toHaveBeenCalled();
   });
   it("does nothing while the mode is off or the binding is unconfirmed", async () => {
@@ -276,13 +434,14 @@ describe("failover after a turn", () => {
       host = daemon(t.switching);
     t.setQuota("keti", 100);
     await t.usage.list();
-    await t.failover.onTurnEnded(failed, context(host.paseo));
+    await finish(t.failover, failed, context(host.paseo));
     expect(host.ref.timeline.append).not.toHaveBeenCalled();
     await t.f.store.change((state) => {
       state.failover = { mode: "auto", autoContinue: true };
       state.bindings["agent-one"].status = "unconfirmed";
     });
-    await t.failover.onTurnEnded(
+    await finish(
+      t.failover,
       turn({ kind: "failed", error: { message: "x" } }, "turn-2"),
       context(host.paseo),
     );
@@ -294,7 +453,7 @@ describe("failover after a turn", () => {
     t.setQuota("keti", 100);
     t.setQuota("cody", 100);
     await t.usage.list();
-    await t.failover.onTurnEnded(failed, context(host.paseo));
+    await finish(t.failover, failed, context(host.paseo));
     expect(host.ref.reload).not.toHaveBeenCalled();
     expect(notice(host.ref)).toMatchObject({ variant: "exhausted", fromName: "keti", auto: true });
     expect(notice(host.ref).toName).toBeUndefined();
@@ -343,7 +502,8 @@ describe("failover after a turn", () => {
     let turnId = 0;
     const run = async (exhausted: string) => {
       setQuota(exhausted, 100);
-      await failover.onTurnEnded(
+      await finish(
+        failover,
         turn({ kind: "failed", error: { message: "limit" } }, `turn-${turnId++}`),
         context(host.paseo),
       );
@@ -375,7 +535,7 @@ describe("failover after a turn", () => {
     host.ref.reload.mockImplementation(async () => {
       throw new Error("reload crashed");
     });
-    await t.failover.onTurnEnded(failed, context(host.paseo));
+    await finish(t.failover, failed, context(host.paseo));
     expect(notice(host.ref)).toMatchObject({
       variant: "failed",
       fromName: "keti",

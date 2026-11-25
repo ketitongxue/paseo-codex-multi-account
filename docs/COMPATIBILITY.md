@@ -23,6 +23,7 @@ manifest：`>=0.14.0-beta.1 <0.18.0`。daemon 和显示插件 UI 的客户端分
 ## API 与回归检查
 
 - 有新 lifecycle API 的宿主使用 `addHook("agent.open.before", handler)` 与 `addHook("agent.turn.after", handler)`，老宿主使用 `before("agent.session_open", handler)` 与 `on("agent.turn_ended", handler)`。按能力检测，只注册一次，不会在新 API 拒绝注册时静默降级；保留 this 和原样清理函数。
+- 自动切换通过同一 Agent 的非空 turnId 配对开始与结束通知（旧版 `agent.turn_started`，新版 `agent.turn.before`）。切换账号或开始新轮次会使旧通知及进行中的配额检查失效。插件重启、缺失开始事件或 turnId 为空时跳过该轮检查。宿主异步发送通知，事件本身不含账号身份；如果一对通知都在切换后才送达，插件无法从事件判断原账号。
 - 0.16 新增只读会话 metadata 和后台 Agent 标记，0.17 在会话打开请求中新增可选 `appendSystemPrompt` 并移除已弃用的 `agent.turn.after` 空 `timeline` 字段。本插件不读取该字段，并通过真实 IPC 验证 metadata、background 与 `appendSystemPrompt` 在账号环境注入、非 Codex provider 及重载恢复时保持不变，避免丢失其他插件数据或改变 Agent 可见性。
 - 0.16/0.17 的客户端引用、Composer、Worktree Manager、Workspace Row Badge 等 API 为扩展接口，原有创建、导航及重载 API 保持兼容；Usage Source 核心合同保持一致（0.17 新增的可选 `durationSeconds`、`observedAt`、`launch`、`provider` 不破坏现有实现）。
 - 逐版本测试账号选择、CODEX_HOME、工具元数据、Usage Source、错误与卸载/重载绑定保留；账号固定、失败回退、删除预约与凭据保密测试保持不变，Pi provider 不受影响。

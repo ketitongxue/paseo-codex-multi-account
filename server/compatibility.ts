@@ -48,3 +48,19 @@ export function registerTurnEndedHook(host: TurnHost, handler: TurnEndedHandler)
     });
   return host.on("agent.turn_ended", handler);
 }
+
+export type TurnStartedEvent = Pick<TurnEndedEvent, "agent" | "turnId">;
+type TurnStartedHandler = (event: TurnStartedEvent) => void;
+export function registerTurnStartedHook(
+  host: Pick<PluginServerContext, "on"> & {
+    addHook?: (
+      name: "agent.turn.before",
+      handler: (event: TurnStartedEvent) => Promise<void>,
+    ) => () => void;
+  },
+  handler: TurnStartedHandler,
+): () => void {
+  if (typeof host.addHook === "function")
+    return host.addHook("agent.turn.before", async (event) => handler(event));
+  return host.on("agent.turn_started", handler);
+}
