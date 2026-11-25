@@ -4,7 +4,10 @@ import { createElement, type ReactNode } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ calls: [] as Array<{ name: string; input: unknown }> }));
+const state = vi.hoisted(() => ({
+  calls: [] as Array<{ name: string; input: unknown }>,
+  approved: false,
+}));
 vi.mock("react-native", () => ({ View: "View", Text: "Text", Pressable: "Pressable" }));
 vi.mock("@getpaseo/plugin/client", () => ({
   usePaseo: () => ({ agents: { create: vi.fn() } }),
@@ -13,7 +16,12 @@ vi.mock("@getpaseo/plugin/client", () => ({
     if (contract.name === "accounts.list")
       return {
         defaultId: null,
-        bindings: {},
+        bindings: {
+          "agent-one": { accountId: "home-test", identityKey: "identity", status: "active" },
+        },
+        failoverTargets: state.approved
+          ? { "agent-one": [{ accountId: "home-test", identityKey: "identity" }] }
+          : {},
         failover: { mode: "offer", autoContinue: true },
         accounts: [
           {
@@ -34,6 +42,8 @@ vi.mock("@getpaseo/plugin/client", () => ({
           },
         ],
       };
+    if (contract.name === "failover.target")
+      state.approved = (input as { identityKey: string | null }).identityKey !== null;
     if (contract.name === "usage.list")
       return [
         {
@@ -94,6 +104,7 @@ afterEach(async () => {
   await act(async () => renderer?.unmount());
   queryClient?.clear();
   state.calls.length = 0;
+  state.approved = false;
 });
 describe("account screen", () => {
   it("renders quota and secure storage, manual refresh and confirmation before deleting", async () => {
@@ -102,9 +113,9 @@ describe("account screen", () => {
     ).IS_REACT_ACT_ENVIRONMENT = true;
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const props = {
-      theme: { colors },
+      theme: { colors: colors as PluginScreenProps["theme"]["colors"] },
       layout: { compact: true, platform: "ios" },
-      params: {},
+      params: { agentId: "agent-one" },
       host: { id: "test", label: "test" },
     } as PluginScreenProps;
     await act(async () => {
@@ -132,6 +143,25 @@ describe("account screen", () => {
     expect(state.calls.find((call) => call.name === "failover.set")?.input).toEqual({
       mode: "auto",
       autoContinue: true,
+    });
+    await act(async () => {
+      root.findByProps({ accessibilityLabel: "允许此 Agent 自动切换使用此账号" }).props.onPress();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(state.calls.find((call) => call.name === "failover.target")?.input).toEqual({
+      agentId: "agent-one",
+      accountId: "home-test",
+      identityKey: "identity",
+    });
+    expect(JSON.stringify(renderer?.toJSON())).toContain("已加入此 Agent 的自动切换账号组");
+    await act(async () => {
+      root.findByProps({ accessibilityLabel: "撤销此 Agent 的自动切换授权" }).props.onPress();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(state.calls.filter((call) => call.name === "failover.target").at(-1)?.input).toEqual({
+      agentId: "agent-one",
+      accountId: "home-test",
+      identityKey: null,
     });
     await act(async () => {
       root.findByProps({ accessibilityLabel: "刷新全部额度" }).props.onPress();

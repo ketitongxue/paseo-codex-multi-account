@@ -1,10 +1,10 @@
 import type { PluginHookContext } from "@getpaseo/plugin/server";
-import type { Account, FailoverNotice } from "../shared/contracts";
+import type { Account, FailoverNotice, FailoverTarget } from "../shared/contracts";
 import { FAILOVER_KIND } from "../shared/contracts";
 import type { Accounts } from "./accounts";
 import type { TurnEndedEvent } from "./compatibility";
 import { safeMessage } from "./errors";
-import { resolveFailover } from "./store";
+import { approvedTargets, isFailoverApproved, resolveFailover } from "./store";
 import type { Switching } from "./switching";
 import { exhaustedWindows, minRemainingPct, type Usage } from "./usage";
 
@@ -72,49 +72,55 @@ export class Failover {
     );
     if (event.turnId !== null) this.rememberTurn(event.turnId);
 
-    if (settings.mode === "auto" && this.autoAllowed(agentId, now)) {
-      const target = (await this.candidates(agentId, binding.accountId, now))[0];
-      if (!target) {
-        await this.notice(paseo, agentId, {
-          variant: "exhausted",
-          at: iso(now),
-          fromName,
-          resetsAt: resetMs ? iso(resetMs) : null,
-          auto: true,
-        });
+    const targets = approvedTargets(state, agentId);
+    if (
+      settings.mode === "auto" &&
+      isFailoverApproved(targets, binding) &&
+      this.autoAllowed(agentId, now)
+    ) {
+      const [target] = await this.candidates(agentId, binding.accountId, now, targets);
+      if (target) {
+        try {
+          let continued = false;
+          await this.switching.switch(agentId, target.account.id, paseo, {
+            source: binding,
+            afterSwitch: async (nextBinding) => {
+              this.recordAuto(agentId, binding.accountId, now);
+              if (event.outcome.kind !== "failed") return;
+              const current = await this.accounts.store.read();
+              const currentSettings = resolveFailover(current.failover);
+              const currentTargets = approvedTargets(current, agentId);
+              if (
+                currentSettings.mode !== "auto" ||
+                !currentSettings.autoContinue ||
+                !isFailoverApproved(currentTargets, binding) ||
+                !isFailoverApproved(currentTargets, nextBinding)
+              )
+                return;
+              await paseo.agents.ref(agentId).send("Continue.");
+              continued = true;
+            },
+          });
+          await this.notice(paseo, agentId, {
+            variant: "switched",
+            at: iso(now),
+            fromName,
+            toName: target.account.name,
+            auto: true,
+            continued,
+          });
+        } catch (error) {
+          await this.notice(paseo, agentId, {
+            variant: "failed",
+            at: iso(now),
+            fromName,
+            toName: target.account.name,
+            auto: true,
+            reason: safeMessage(error),
+          });
+        }
         return;
       }
-      try {
-        await this.switching.switch(agentId, target.account.id, paseo);
-        this.recordAuto(agentId, binding.accountId, now);
-        let continued = false;
-        if (settings.autoContinue && event.outcome.kind === "failed") {
-          try {
-            await paseo.agents.ref(agentId).send("Continue.");
-            continued = true;
-          } catch (error) {
-            console.error("[failover] continue message failed", error);
-          }
-        }
-        await this.notice(paseo, agentId, {
-          variant: "switched",
-          at: iso(now),
-          fromName,
-          toName: target.account.name,
-          auto: true,
-          continued,
-        });
-      } catch (error) {
-        await this.notice(paseo, agentId, {
-          variant: "failed",
-          at: iso(now),
-          fromName,
-          toName: target.account.name,
-          auto: true,
-          reason: safeMessage(error),
-        });
-      }
-      return;
     }
     // Offer (or auto past its guards): one row per used-up account and reset.
     const previous = this.offered.get(agentId);
@@ -137,16 +143,20 @@ export class Failover {
     agentId: string,
     fromAccountId: string,
     now: number,
+    targets?: readonly FailoverTarget[],
   ): Promise<Array<{ account: Account; remaining: number | null }>> {
     const departed = this.leftAt.get(agentId);
     const result: Array<{ account: Account; remaining: number | null }> = [];
     for (const account of await this.accounts.all()) {
       if (account.id === fromAccountId) continue;
+      const target = targets?.find((entry) => entry.accountId === account.id);
+      if (targets && !target) continue;
       if (this.busy(account.id) || this.switching.inUse(account.id)) continue;
       const left = departed?.get(account.id);
       if (left != null && now - left < NO_RETURN_MS) continue;
       try {
-        await this.accounts.requireCredential(account);
+        const credential = await this.accounts.requireCredential(account);
+        if (target && credential.identity.key !== target.identityKey) continue;
       } catch {
         continue;
       }

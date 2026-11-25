@@ -3,9 +3,14 @@ import { ACCOUNT_ENV, ACCOUNT_LABEL, type Account, type Binding } from "../share
 import type { Accounts } from "./accounts";
 import { AUTH_OVERRIDES, CodexRpc } from "./codex-rpc";
 import { PublicError } from "./errors";
+import { approvedTargets, isFailoverApproved, type Registry, resolveFailover } from "./store";
 
 type PaseoApi = PluginHandlerContext["paseo"];
 export type Preflight = (account: Account, threadId: string | null) => Promise<void>;
+type AutomaticSwitch = {
+  source: Binding;
+  afterSwitch: (binding: Binding) => Promise<void>;
+};
 export class Switching {
   private applying = new Set<string>();
   private overrides = new Map<string, Binding>();
@@ -80,13 +85,20 @@ export class Switching {
     const { [ACCOUNT_ENV]: _selector, ...env } = request.env;
     return { ...request, env: { ...env, CODEX_HOME: account.home } };
   }
-  async switch(agentId: string, selector: string, paseo: PaseoApi): Promise<Binding> {
+  async switch(
+    agentId: string,
+    selector: string,
+    paseo: PaseoApi,
+    automatic?: AutomaticSwitch,
+  ): Promise<Binding> {
     if (this.applying.has(agentId)) throw new PublicError("此 Agent 正在切换账号。");
     this.applying.add(agentId);
     let previous: Binding | undefined;
     let started = false;
     try {
       const account = await this.accounts.resolve(selector);
+      if (automatic && (account.id !== selector || this.inUse(account.id)))
+        throw new PublicError("自动切换目标已变化，请重新检查。");
       const reserved = new Set([account.id]);
       this.targets.set(agentId, reserved);
       if (this.busy(account.id)) throw new PublicError("请等待该账号登录结束。");
@@ -109,18 +121,29 @@ export class Switching {
       const agent = await inspect();
       const state = await this.accounts.store.read();
       previous = Object.hasOwn(state.bindings, agentId) ? state.bindings[agentId] : undefined;
-      // The registry will temporarily point at the target. Keep the rollback account reserved
-      // as well, so another client cannot delete it or replace its login during reload.
-      if (previous) reserved.add(previous.accountId);
-      await this.preflight(account, agent.persistence?.sessionId ?? null);
-      await inspect();
       const binding: Binding = {
         accountId: account.id,
         identityKey: auth.identity.key,
         status: "active",
       };
+      if (automatic) {
+        this.requireAutomaticApproval(state, agentId, automatic.source, binding);
+        const fromAccount = await this.accounts.resolve(automatic.source.accountId);
+        const fromAuth = await this.accounts.requireCredential(fromAccount);
+        if (
+          fromAccount.id !== automatic.source.accountId ||
+          fromAuth.identity.key !== automatic.source.identityKey
+        )
+          throw new PublicError("当前账号身份已变化，请重新确认 Agent 绑定。");
+      }
+      // The registry will temporarily point at the target. Keep the rollback account reserved
+      // as well, so another client cannot delete it or replace its login during reload.
+      if (previous) reserved.add(previous.accountId);
+      await this.preflight(account, agent.persistence?.sessionId ?? null);
+      await inspect();
       // Persist unknown before changing the running session. A crash never leaves an assumed active account.
       await this.accounts.store.change((registry) => {
+        if (automatic) this.requireAutomaticApproval(registry, agentId, automatic.source, binding);
         registry.bindings[agentId] = { ...binding, status: "unconfirmed" };
       });
       this.overrides.set(agentId, binding);
@@ -133,6 +156,14 @@ export class Switching {
         registry.bindings[agentId] = binding;
         registry.released = registry.released.filter((id) => id !== agentId);
       });
+      // Keep the switch lock through the follow-up so a manual switch cannot race the send.
+      if (automatic) {
+        try {
+          await automatic.afterSwitch(binding);
+        } catch (error) {
+          console.error("[failover] continue message failed", error);
+        }
+      }
       return binding;
     } catch (error) {
       if (started && previous) {
@@ -177,6 +208,27 @@ export class Switching {
       this.applying.delete(agentId);
       this.targets.delete(agentId);
     }
+  }
+
+  private requireAutomaticApproval(
+    state: Registry,
+    agentId: string,
+    source: Binding,
+    target: Binding,
+  ) {
+    const current = Object.hasOwn(state.bindings, agentId) ? state.bindings[agentId] : undefined;
+    const targets = approvedTargets(state, agentId);
+    if (
+      resolveFailover(state.failover).mode !== "auto" ||
+      state.released.includes(agentId) ||
+      !current ||
+      current.status === "unconfirmed" ||
+      current.accountId !== source.accountId ||
+      current.identityKey !== source.identityKey ||
+      !isFailoverApproved(targets, source) ||
+      !isFailoverApproved(targets, target)
+    )
+      throw new PublicError("此 Agent 的绑定或自动切换授权已变化。");
   }
 }
 export function nativePreflight(command: string[], env: NodeJS.ProcessEnv): Preflight {

@@ -53,13 +53,31 @@ describe("account deletion and retired bindings", () => {
     });
     await expect(f.controller.remove(a.id, false)).rejects.toThrow("绑定");
     const live = {
-      agents: { ref: () => ({ refresh: async () => ({ agent: { archivedAt: null } }) }) },
+      agents: {
+        ref: () => ({ refresh: async () => ({ agent: { provider: "codex", archivedAt: null } }) }),
+      },
     } as unknown as PaseoApi;
+    const target = await f.home(".codex-target");
+    const targetKey = (await f.accounts.requireCredential(target)).identity.key;
+    await expect(
+      f.controller.setFailoverTarget("agent-one", target.id, "stale-key", live),
+    ).rejects.toThrow("身份");
+    await f.controller.setFailoverTarget("agent-one", target.id, targetKey, live);
+    expect((await f.accounts.snapshot()).failoverTargets).toEqual({
+      "agent-one": [{ accountId: target.id, identityKey: targetKey }],
+    });
+    await f.controller.setFailoverTarget("agent-one", target.id, null, live);
+    expect((await f.store.read()).failoverTargets).toEqual({});
+    await f.controller.setFailoverTarget("agent-one", target.id, targetKey, live);
+    await f.controller.remove(target.id, false);
+    expect((await f.store.read()).failoverTargets).toEqual({});
+    await f.controller.setFailoverTarget("agent-one", a.id, identity.identity.key, live);
     await expect(f.controller.release("agent-one", live)).rejects.toThrow("归档");
     const archived = {
       agents: { ref: () => ({ refresh: async () => ({ agent: { archivedAt: "2026-01-01" } }) }) },
     } as unknown as PaseoApi;
     await f.controller.release("agent-one", archived);
+    expect((await f.store.read()).failoverTargets).toEqual({});
     await f.controller.remove(a.id, false);
     expect((await f.store.read()).released).toContain("agent-one");
     await expect(

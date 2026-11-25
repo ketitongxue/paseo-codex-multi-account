@@ -7,6 +7,8 @@ import {
   Binding,
   FailoverSettings,
   type FailoverSettings as FailoverSettingsValue,
+  type FailoverTarget,
+  FailoverTargets,
 } from "../shared/contracts";
 import { PublicError } from "./errors";
 import { atomicWrite, missing, optionalText, privateDir } from "./files";
@@ -20,6 +22,7 @@ const Registry = z
     bindings: z.record(z.string(), Binding),
     released: z.array(z.string()).default([]),
     failover: FailoverSettings.optional(),
+    failoverTargets: FailoverTargets.default({}),
   })
   .strict();
 export type Registry = z.infer<typeof Registry>;
@@ -27,6 +30,15 @@ export type Registry = z.infer<typeof Registry>;
 export const DEFAULT_FAILOVER: FailoverSettingsValue = { mode: "offer", autoContinue: true };
 export function resolveFailover(value: Registry["failover"]): FailoverSettingsValue {
   return value ?? DEFAULT_FAILOVER;
+}
+export function approvedTargets(state: Registry, agentId: string) {
+  return Object.hasOwn(state.failoverTargets, agentId) ? state.failoverTargets[agentId] : [];
+}
+export function isFailoverApproved(targets: readonly FailoverTarget[], account: FailoverTarget) {
+  return targets.some(
+    ({ accountId, identityKey }) =>
+      accountId === account.accountId && identityKey === account.identityKey,
+  );
 }
 export function homeId(home: string): string {
   return `home-${createHash("sha256").update(home).digest("hex").slice(0, 24)}`;
@@ -42,7 +54,15 @@ export class Store {
   async read(): Promise<Registry> {
     const text = await optionalText(this.path);
     if (text === null)
-      return { version: 1, accounts: [], hidden: [], defaultId: null, bindings: {}, released: [] };
+      return {
+        version: 1,
+        accounts: [],
+        hidden: [],
+        defaultId: null,
+        bindings: {},
+        released: [],
+        failoverTargets: {},
+      };
     try {
       return Registry.parse(JSON.parse(text));
     } catch {

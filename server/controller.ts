@@ -8,7 +8,7 @@ import { CodexRpc } from "./codex-rpc";
 import { PublicError } from "./errors";
 import { Failover } from "./failover";
 import { Logins } from "./login";
-import { Store } from "./store";
+import { approvedTargets, Store } from "./store";
 import { nativePreflight, Switching } from "./switching";
 import { Usage } from "./usage";
 
@@ -73,6 +73,11 @@ export class Controller {
         )
           throw new PublicError("账号绑定已变化，删除被拒绝。");
         registry.accounts = registry.accounts.filter((entry) => entry.id !== account.id);
+        for (const [agentId, targets] of Object.entries(registry.failoverTargets)) {
+          const retained = targets.filter((target) => target.accountId !== account.id);
+          if (retained.length) registry.failoverTargets[agentId] = retained;
+          else delete registry.failoverTargets[agentId];
+        }
         if (!registry.hidden.includes(account.home)) registry.hidden.push(account.home);
       });
       try {
@@ -112,6 +117,7 @@ export class Controller {
     await this.accounts.store.change((state) => {
       if (this.switching.isApplying(agentId)) throw new PublicError("请等待 Agent 账号切换结束。");
       delete state.bindings[agentId];
+      delete state.failoverTargets[agentId];
       if (!state.released.includes(agentId)) state.released.push(agentId);
     });
     return {};
@@ -120,6 +126,46 @@ export class Controller {
     await this.accounts.store.change((state) => {
       state.failover = settings;
     });
+  }
+  async setFailoverTarget(
+    agentId: string,
+    accountId: string,
+    identityKey: string | null,
+    paseo: PaseoApi,
+  ) {
+    const account = identityKey === null ? null : await this.accounts.resolve(accountId);
+    if (account) {
+      const live = await paseo.agents.ref(agentId).refresh();
+      if (live?.agent.provider !== "codex" || live.agent.archivedAt)
+        throw new PublicError("只能为未归档的 Codex Agent 授权自动切换。");
+    }
+    await this.accounts.store.change(async (state) => {
+      const targets = approvedTargets(state, agentId).filter(
+        (target) => target.accountId !== accountId,
+      );
+      if (account && identityKey !== null) {
+        if (
+          !Object.hasOwn(state.bindings, agentId) ||
+          state.bindings[agentId].status === "unconfirmed" ||
+          state.released.includes(agentId)
+        )
+          throw new PublicError("请先确认此 Agent 的账号绑定。");
+        if (
+          account.id !== accountId ||
+          state.hidden.includes(account.home) ||
+          this.logins.busy(accountId) ||
+          this.mutations.has(accountId)
+        )
+          throw new PublicError("目标账号不可用，请刷新账号列表。");
+        const auth = await this.accounts.requireCredential(account);
+        if (auth.identity.key !== identityKey)
+          throw new PublicError("目标账号身份已变化，请刷新列表后重新授权。");
+        targets.push({ accountId, identityKey });
+      }
+      if (targets.length) state.failoverTargets = { ...state.failoverTargets, [agentId]: targets };
+      else delete state.failoverTargets[agentId];
+    });
+    return {};
   }
   async close(): Promise<void> {
     await this.logins.close();
