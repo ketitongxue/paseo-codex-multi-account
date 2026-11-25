@@ -52,7 +52,7 @@ createRoot(document.getElementById("root")).render(
           createElement(
             "div",
             { style: { fontSize: 24, fontWeight: 600, color: colors.foreground } },
-            "Codex 账号与额度",
+            "Codex Accounts & Usage",
           ),
           createElement(
             "div",

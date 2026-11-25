@@ -101,15 +101,17 @@ describe("per-agent selection and switching", () => {
     );
     await expect(
       switching.open(request({ labels: { [ACCOUNT_LABEL]: "no-account" } })),
-    ).rejects.toThrow("不存在");
+    ).rejects.toThrow("not found");
     await expect(
       switching.open(
         request({ labels: { [ACCOUNT_LABEL]: "keti" }, env: { OPENAI_API_KEY: "SECRET" } }),
       ),
-    ).rejects.toThrow("冲突");
+    ).rejects.toThrow("conflicts");
     await switching.open(request({ labels: { [ACCOUNT_LABEL]: "keti" } }));
     await writeFile(join(a.home, "auth.json"), authJson("replacement-account"));
-    await expect(switching.open(request({ reason: "resume" }))).rejects.toThrow("身份已改变");
+    await expect(switching.open(request({ reason: "resume" }))).rejects.toThrow(
+      "identity for the selected CODEX_HOME changed",
+    );
     const busy = new Switching(
       f.accounts,
       () => true,
@@ -117,7 +119,7 @@ describe("per-agent selection and switching", () => {
     );
     await expect(
       busy.open(request({ agentId: "two", labels: { [ACCOUNT_LABEL]: "keti" } })),
-    ).rejects.toThrow("正在登录");
+    ).rejects.toThrow("Sign-in is in progress");
   });
   it("refuses to pin an opaque credential without a stable ChatGPT account ID", async () => {
     const f = await setup(),
@@ -132,12 +134,12 @@ describe("per-agent selection and switching", () => {
       async () => {},
     );
     await expect(switching.open(request({ labels: { [ACCOUNT_LABEL]: a.id } }))).rejects.toThrow(
-      "稳定",
+      "stable ChatGPT account ID",
     );
     await expect(switching.switch("agent-one", a.id, daemon(switching).paseo)).rejects.toThrow(
-      "稳定",
+      "stable ChatGPT account ID",
     );
-    await expect(f.accounts.setDefault(a.id)).rejects.toThrow("稳定");
+    await expect(f.accounts.setDefault(a.id)).rejects.toThrow("stable ChatGPT account ID");
     expect((await f.store.read()).bindings).toEqual({});
   });
   it("does not overwrite a competing first-open binding after an asynchronous credential read", async () => {
@@ -166,7 +168,7 @@ describe("per-agent selection and switching", () => {
       async () => {},
     );
     const first = switching.open(request({ labels: { [ACCOUNT_LABEL]: a.id } }));
-    const rejection = expect(first).rejects.toThrow("绑定已变化");
+    const rejection = expect(first).rejects.toThrow("binding changed");
     await started;
     await switching.open(request({ labels: { [ACCOUNT_LABEL]: b.id } }));
     proceed();
@@ -215,7 +217,7 @@ describe("per-agent selection and switching", () => {
     );
     await switching.open(request({ labels: { [ACCOUNT_LABEL]: a.id } }));
     const busy = daemon(switching, "running");
-    await expect(switching.switch("agent-one", b.id, busy.paseo)).rejects.toThrow("空闲");
+    await expect(switching.switch("agent-one", b.id, busy.paseo)).rejects.toThrow("idle");
     const idle = daemon(switching);
     await expect(switching.switch("agent-one", b.id, idle.paseo)).rejects.toThrow(
       "history unavailable",
@@ -245,10 +247,12 @@ describe("per-agent selection and switching", () => {
     await switching.open(request({ labels: { [ACCOUNT_LABEL]: a.id } }));
     const { paseo, ref } = daemon(switching, "idle", 1);
     const operation = switching.switch("agent-one", b.id, paseo);
-    const rejection = expect(operation).rejects.toThrow("已恢复原账号");
+    const rejection = expect(operation).rejects.toThrow("original account was restored");
     await started;
     expect(switching.inUse(b.id)).toBe(true);
-    await expect(switching.switch("agent-one", a.id, paseo)).rejects.toThrow("正在切换");
+    await expect(switching.switch("agent-one", a.id, paseo)).rejects.toThrow(
+      "already switching accounts",
+    );
     proceed();
     await rejection;
     expect(ref.reload).toHaveBeenCalledTimes(2);
@@ -292,7 +296,9 @@ describe("per-agent selection and switching", () => {
       await switching.open(request({ reason: "refresh", purpose: "history" }));
       return { agent: host.agent };
     });
-    await expect(switching.switch("agent-one", a.id, host.paseo)).rejects.toThrow("未确认");
+    await expect(switching.switch("agent-one", a.id, host.paseo)).rejects.toThrow(
+      "binding is marked unconfirmed",
+    );
     expect((await f.store.read()).bindings["agent-one"].status).toBe("unconfirmed");
   });
   it("never resumes an unconfirmed binding after failed rollback or plugin restart", async () => {
@@ -307,13 +313,15 @@ describe("per-agent selection and switching", () => {
     await switching.open(request({ labels: { [ACCOUNT_LABEL]: a.id } }));
     await expect(
       switching.switch("agent-one", b.id, daemon(switching, "idle", 2).paseo),
-    ).rejects.toThrow("未能确认");
+    ).rejects.toThrow("could not be confirmed");
     expect((await f.store.read()).bindings["agent-one"].status).toBe("unconfirmed");
     const reopened = new Switching(
       f.accounts,
       () => false,
       async () => {},
     );
-    await expect(reopened.open(request({ reason: "resume" }))).rejects.toThrow("上次切换未确认");
+    await expect(reopened.open(request({ reason: "resume" }))).rejects.toThrow(
+      "previous switch was unconfirmed",
+    );
   });
 });

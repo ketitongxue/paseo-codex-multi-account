@@ -6,6 +6,20 @@ import { Pressable, Text, View } from "react-native";
 import * as api from "../shared/contracts";
 import { localTime, percent, usageProblem } from "./format";
 
+const bindingStatusLabels = {
+  selected: "Selected",
+  active: "Active",
+  unconfirmed: "Unconfirmed",
+};
+
+const signInStatusLabels = {
+  starting: "Preparing sign-in…",
+  waiting: "Waiting for sign-in…",
+  complete: "Signed in",
+  error: "Sign-in failed",
+  canceled: "Sign-in canceled",
+};
+
 export function AccountsScreen({ theme, layout, params, navigation }: PluginScreenProps) {
   const colors = theme.colors,
     queryClient = useQueryClient(),
@@ -65,7 +79,7 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
     try {
       await action();
     } catch (value) {
-      setError(value instanceof Error ? value.message : "操作失败，请重试。");
+      setError(value instanceof Error ? value.message : "The operation failed. Try again.");
     } finally {
       await queryClient.invalidateQueries({ queryKey: ["accounts"] });
       setPending(false);
@@ -130,24 +144,30 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
           alignSelf: "center",
         }}
       >
-        {body("独立 CODEX_HOME · 新登录仅保存到系统 Keychain/keyring · 不复制 token")}
         {body(
-          "发现与保存不修改现有 home；外部账号删除仅隐藏。Usage 为订阅限额，不是本地会话 token 统计。",
+          "Separate CODEX_HOME directories · New sign-ins use the system Keychain or keyring · Tokens are never copied",
+        )}
+        {body(
+          "Discovery and saving leave existing homes intact. Removing an external account only hides it. Usage shows subscription limits.",
           true,
         )}
         {agentId &&
           body(
-            `当前 Agent：${agentId} · ${binding ? `${snapshot.data?.accounts.find((a) => a.id === binding.accountId)?.name || binding.accountId} (${binding.status})` : "尚未绑定；切换时会检查原生历史并纳入管理"}`,
+            `Current agent: ${agentId} · ${binding ? `${snapshot.data?.accounts.find((a) => a.id === binding.accountId)?.name || binding.accountId} (${bindingStatusLabels[binding.status]})` : "No account bound. Switching checks native session history before binding an account."}`,
           )}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          {button("重新发现（含已隐藏）", async () => {
+          {button("Rediscover accounts (including hidden)", async () => {
             await discover({});
             await queryClient.invalidateQueries({ queryKey: ["usage"] });
           })}
-          {button("刷新全部额度", async () => {
+          {button("Refresh all usage", async () => {
             queryClient.setQueryData(["usage"], await usage({ force: true }));
           })}
-          {button("取消默认账号", () => setDefault({ accountId: null }), !snapshot.data?.defaultId)}
+          {button(
+            "Clear default account",
+            () => setDefault({ accountId: null }),
+            !snapshot.data?.defaultId,
+          )}
         </View>
         {(() => {
           const failover = snapshot.data?.failover ?? {
@@ -168,19 +188,21 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
                 borderRadius: 8,
               }}
             >
-              {body("额度耗尽 failover")}
+              {body("Usage limit failover")}
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                {button("关闭", () => apply("off"), failover.mode === "off")}
-                {button("提示切换", () => apply("offer"), failover.mode === "offer")}
-                {button("自动切换", () => apply("auto"), failover.mode === "auto")}
+                {button("Off", () => apply("off"), failover.mode === "off")}
+                {button("Suggest a switch", () => apply("offer"), failover.mode === "offer")}
+                {button("Auto-switch", () => apply("auto"), failover.mode === "auto")}
                 {failover.mode === "auto" &&
                   button(
-                    failover.autoContinue ? "切换后发送 Continue.：开" : "切换后发送 Continue.：关",
+                    failover.autoContinue
+                      ? "Send “Continue.” after switching: On"
+                      : "Send “Continue.” after switching: Off",
                     () => apply("auto", !failover.autoContinue),
                   )}
               </View>
               {body(
-                "turn 结束后检测账号级窗口（5 小时/周）是否耗尽：提示模式在聊天中推荐账号；自动模式切换到余量最多的账号并可发送 Continue.。每 Agent 每小时至多 3 次自动切换，1 小时内不切回刚离开的账号。",
+                "After each turn, the plugin checks the account's 5-hour and weekly limits. It can suggest an account in chat or switch automatically to the account with the most remaining usage and optionally send “Continue.” Each agent can auto-switch up to three times per hour and cannot return to the account it just left for one hour.",
                 true,
               )}
             </View>
@@ -191,9 +213,12 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
             {error || snapshot.error?.message || quotas.error?.message}
           </Text>
         )}
-        {snapshot.isPending && body("正在发现账号…", true)}
+        {snapshot.isPending && body("Discovering accounts…", true)}
         {snapshot.data?.accounts.length === 0 &&
-          body("暂无账号。创建安全登录账号，或保存已有 CODEX_HOME。", true)}
+          body(
+            "No accounts yet. Create an account with secure sign-in or save an existing CODEX_HOME.",
+            true,
+          )}
         {snapshot.data?.accounts.map((account) => {
           const row = quotas.data?.find((entry) => entry.accountId === account.id);
           return (
@@ -209,24 +234,25 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
               }}
             >
               {body(
-                `${account.name}${snapshot.data.defaultId === account.id ? " · 默认" : ""} · ${account.managed ? "托管" : "外部"}${account.saved ? " · 已保存" : " · 自动发现"}`,
+                `${account.name}${snapshot.data.defaultId === account.id ? " · Default" : ""} · ${account.managed ? "Managed" : "External"}${account.saved ? " · Saved" : " · Discovered"}`,
               )}
               {body(account.home, true)}
               {body(`ID: ${account.id}`, true)}
               {body(
                 account.identity
-                  ? `${account.identity.email || "ChatGPT"} · ${account.identity.plan || "未知套餐"} · ${account.identity.storage}${account.identity.expired ? " · 认证过期" : ""}`
-                  : account.problem || "未登录",
+                  ? `${account.identity.email || "ChatGPT"} · ${account.identity.plan || "Unknown plan"} · ${account.identity.storage === "keyring" ? "Keyring" : "File"}${account.identity.expired ? " · Authentication expired" : ""}`
+                  : account.problem || "Signed out",
                 !account.problem,
               )}
               {row?.report.status === "available" ? (
                 <View style={{ gap: 6 }}>
-                  {body(`套餐：${row.report.planLabel || account.identity?.plan || "未知"}`)}
-                  {!row.report.windows.length && body("服务端未提供限额窗口", true)}
+                  {body(`Plan: ${row.report.planLabel || account.identity?.plan || "Unknown"}`)}
+                  {!row.report.windows.length &&
+                    body("The server did not report usage windows.", true)}
                   {row.report.windows.map((window) => (
                     <View key={window.id} style={{ gap: 3 }}>
                       {body(
-                        `${window.label}：已用 ${percent(window.usedPct)} · 剩余 ${percent(window.remainingPct)}`,
+                        `${window.label}: ${percent(window.usedPct)} used · ${percent(window.remainingPct)} remaining`,
                       )}
                       {typeof window.usedPct === "number" && (
                         <View
@@ -247,47 +273,47 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
                           />
                         </View>
                       )}
-                      {body(`重置：${localTime(window.resetsAt)}`, true)}
+                      {body(`Resets: ${localTime(window.resetsAt)}`, true)}
                     </View>
                   ))}
                   {row.report.balances?.map((balance) => (
                     <Text key={balance.id} style={{ color: colors.foreground }}>
-                      {balance.label}：{balance.remaining ?? "未知"} credits
+                      {balance.label}: {balance.remaining ?? "Unknown"} credits
                     </Text>
                   ))}
                 </View>
               ) : row ? (
                 body(usageProblem(row.report))
               ) : (
-                body("额度等待查询…", true)
+                body("Usage refresh pending…", true)
               )}
               {row &&
                 body(
-                  `查询：${localTime(row.fetchedAt)}${row.nextRetryAt ? ` · 最早重试：${localTime(row.nextRetryAt)}` : ""}`,
+                  `Checked: ${localTime(row.fetchedAt)}${row.nextRetryAt ? ` · Next retry: ${localTime(row.nextRetryAt)}` : ""}`,
                   true,
                 )}
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                {button("保存/重命名", async () => {
-                  if (!name.trim()) throw new Error("请在下方名称框填写名称。");
+                {button("Save / rename", async () => {
+                  if (!name.trim()) throw new Error("Enter an account name below.");
                   await save({ home: account.home, name });
                 })}
                 {button(
-                  "设为默认",
+                  "Set as default",
                   () => setDefault({ accountId: account.id }),
                   !account.identity || account.loginBusy,
                 )}
                 {button(
-                  account.loginBusy ? "查看登录" : "登录",
+                  account.loginBusy ? "View sign-in" : "Sign in",
                   async () => {
                     const result = account.loginBusy
                       ? await active({ accountId: account.id })
                       : await login({ accountId: account.id, mode });
-                    if (!result) throw new Error("登录正在准备中，请稍后重试。");
+                    if (!result) throw new Error("Sign-in is starting. Try again shortly.");
                     setLoginId(result.id);
                   },
                   !account.managed,
                 )}
-                {button("刷新额度", async () => {
+                {button("Refresh usage", async () => {
                   const values = await usage({ accountId: account.id, force: true });
                   queryClient.setQueryData<api.UsageRow[]>(["usage"], (old) => [
                     ...(old ?? []).filter((entry) => entry.accountId !== account.id),
@@ -296,14 +322,15 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
                 })}
                 {agentId &&
                   button(
-                    "切换当前 Agent",
+                    "Switch current agent",
                     () => switchTo({ agentId, accountId: account.id }),
                     !account.identity || account.loginBusy,
                   )}
                 {button(
-                  "用此账号创建 Agent",
+                  "Create agent with this account",
                   async () => {
-                    if (!cwd.trim()) throw new Error("请先在下方填写新 Agent 的工作目录。");
+                    if (!cwd.trim())
+                      throw new Error("Enter the new agent's working directory below.");
                     const agent = await paseo.agents.create({
                       cwd,
                       config: { provider: "codex" },
@@ -314,14 +341,14 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
                   },
                   !account.identity || account.loginBusy,
                 )}
-                {button("删除…", async () => {
+                {button("Remove…", async () => {
                   setPurge(false);
                   setDeleting(account);
                 })}
               </View>
               {!account.managed &&
                 body(
-                  "外部账号重新登录：使用该 CODEX_HOME 运行 codex login；插件不会改写其认证存储。",
+                  "To sign in again to an external account, run codex login with its CODEX_HOME. The plugin leaves its credential storage intact.",
                   true,
                 )}
             </View>
@@ -336,13 +363,13 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
             borderRadius: 8,
           }}
         >
-          {body("创建、保存与重命名")}
-          {field(name, setName, "账号名称（如 keti）")}
-          {field(home, setHome, "已有 CODEX_HOME（如 ~/.codex-keti）")}
+          {body("Create, save, or rename accounts")}
+          {field(name, setName, "Account name (e.g. keti)")}
+          {field(home, setHome, "Existing CODEX_HOME (e.g. ~/.codex-keti)")}
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-            {button("保存已有 home", () => save({ home, name }), !name.trim() || !home.trim())}
+            {button("Save existing home", () => save({ home, name }), !name.trim() || !home.trim())}
             {button(
-              "创建安全登录账号",
+              "Create account with secure sign-in",
               async () => {
                 const account = await create({ name });
                 const result = await login({ accountId: account.id, mode });
@@ -350,26 +377,30 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
               },
               !name.trim(),
             )}
-            {button(mode === "device" ? "登录模式：设备码" : "登录模式：本机浏览器", async () =>
-              setMode(mode === "device" ? "browser" : "device"),
+            {button(
+              mode === "device" ? "Sign-in method: Device code" : "Sign-in method: Local browser",
+              async () => setMode(mode === "device" ? "browser" : "device"),
             )}
           </View>
-          {field(cwd, setCwd, "新 Agent 工作目录（daemon 上的绝对路径）")}
-          {body("已有会话切换需要双方 home 可读取同一原生历史；不共享时请新建 Agent。", true)}
+          {field(cwd, setCwd, "New agent working directory (absolute path on the daemon host)")}
+          {body(
+            "To switch an existing session, both homes must be able to read the same native session history. Create a new agent if the history is unavailable to the target account.",
+            true,
+          )}
         </View>
         {!!snapshot.data &&
           Object.entries(snapshot.data.bindings).map(([id, value]) => (
             <View key={id} style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               {body(
-                `绑定 ${id} → ${snapshot.data.accounts.find((a) => a.id === value.accountId)?.name || value.accountId} (${value.status})`,
+                `Account binding for ${id} → ${snapshot.data.accounts.find((a) => a.id === value.accountId)?.name || value.accountId} (${bindingStatusLabels[value.status]})`,
                 true,
               )}
-              {button("释放归档/已删除 Agent 绑定", () => release({ agentId: id }))}
+              {button("Release archived or deleted agent binding", () => release({ agentId: id }))}
             </View>
           ))}
       </ScrollView>
       <Modal
-        title="Codex 安全登录"
+        title="Secure Codex sign-in"
         open={!!loginId}
         onOpenChange={(open) => {
           if (!open && loginId)
@@ -380,49 +411,58 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
         }}
       >
         <Modal.Content>
-          {body(currentLogin?.status || "正在准备登录…")}
+          {body(
+            currentLogin ? signInStatusLabels[currentLogin.status] : signInStatusLabels.starting,
+          )}
           {currentLogin?.url && (
-            <ExternalLink href={currentLogin.url}>{body("打开官方登录页面")}</ExternalLink>
+            <ExternalLink href={currentLogin.url}>
+              {body("Open official sign-in page")}
+            </ExternalLink>
           )}
           {currentLogin?.url && body(currentLogin.url, true)}
-          {currentLogin?.url && button("复制登录链接", () => copyText(currentLogin.url ?? ""))}
-          {currentLogin?.code && body(`设备码：${currentLogin.code}`)}
-          {currentLogin?.code && button("复制设备码", () => copyText(currentLogin.code ?? ""))}
+          {currentLogin?.url && button("Copy sign-in link", () => copyText(currentLogin.url ?? ""))}
+          {currentLogin?.code && body(`Device code: ${currentLogin.code}`)}
+          {currentLogin?.code &&
+            button("Copy device code", () => copyText(currentLogin.code ?? ""))}
           {body(
             mode === "browser"
-              ? "浏览器登录必须在 daemon 所在电脑完成回调。"
-              : "在任意设备打开链接输入设备码；必要时先启用 ChatGPT 的设备码登录。",
+              ? "Complete browser sign-in on the computer running the daemon."
+              : "Open the link on any device and enter the device code. Enable device-code sign-in in ChatGPT first if needed.",
             true,
           )}
           {(currentLogin?.error || attempt.error) &&
             body(currentLogin?.error || attempt.error?.message)}
           {loginId &&
-            button("关闭/取消登录", async () => {
+            button("Close / cancel sign-in", async () => {
               await cancel({ loginId });
               setLoginId(null);
             })}
         </Modal.Content>
       </Modal>
       <Modal
-        title="删除账号"
+        title="Remove account"
         open={!!deleting}
         onOpenChange={(open) => {
           if (!open) setDeleting(null);
         }}
       >
         <Modal.Content>
-          {body(`删除 ${deleting?.name || ""}？默认只忘记/隐藏账号，保留认证与原生历史。`)}
+          {body(
+            `Remove ${deleting?.name || ""}? By default, removal only forgets or hides the account and keeps its credentials and native session history.`,
+          )}
           {deleting?.managed &&
             button(
-              purge ? "已选择：注销并永久删除托管 home" : "可选：同时注销并删除托管 home",
+              purge
+                ? "Selected: Sign out and permanently delete the managed home"
+                : "Also sign out and delete the managed home",
               async () => setPurge(!purge),
             )}
-          {button("确认删除", async () => {
+          {button("Confirm removal", async () => {
             if (deleting) await remove({ accountId: deleting.id, purge });
             setDeleting(null);
             await queryClient.invalidateQueries({ queryKey: ["usage"] });
           })}
-          {button("取消", async () => setDeleting(null))}
+          {button("Cancel", async () => setDeleting(null))}
           {error && body(error)}
         </Modal.Content>
       </Modal>

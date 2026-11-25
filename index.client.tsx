@@ -8,7 +8,7 @@ function Sidebar({ openScreen, currentScreen }: PluginSidebarItemProps) {
   return (
     <SidebarRow
       icon="Users"
-      label="Codex 账号与额度"
+      label="Codex Accounts & Usage"
       active={currentScreen?.screenId === "accounts"}
       onPress={() => openScreen({ screenId: "accounts" })}
     />
@@ -16,8 +16,16 @@ function Sidebar({ openScreen, currentScreen }: PluginSidebarItemProps) {
 }
 export default function contribute(client: PluginClientContext) {
   const cleanup = [
-    client.addScreen({ id: "accounts", title: "Codex 账号与额度", Component: AccountsScreen }),
-    client.addSidebarHeaderItem({ id: "accounts", title: "Codex 账号与额度", Component: Sidebar }),
+    client.addScreen({
+      id: "accounts",
+      title: "Codex Accounts & Usage",
+      Component: AccountsScreen,
+    }),
+    client.addSidebarHeaderItem({
+      id: "accounts",
+      title: "Codex Accounts & Usage",
+      Component: Sidebar,
+    }),
     client.addTimelineRenderer({
       kind: rpc.FAILOVER_KIND,
       version: 1,
@@ -26,7 +34,7 @@ export default function contribute(client: PluginClientContext) {
     }),
     client.addCommandCenterItem({
       id: "codex-accounts",
-      title: "Codex 账号与额度",
+      title: "Codex Accounts & Usage",
       icon: "Users",
       context: "agent",
       onSelect: ({ agent, openScreen }) =>
@@ -34,7 +42,7 @@ export default function contribute(client: PluginClientContext) {
     }),
     client.addSlashCommand({
       name: "codex-accounts",
-      description: "打开 Codex 账号、登录与额度",
+      description: "Open Codex accounts, sign-in, and usage",
       argumentHint: "",
       context: "agent",
       onSubmit: ({ agent, openScreen }) =>
@@ -42,21 +50,25 @@ export default function contribute(client: PluginClientContext) {
     }),
     client.addSlashCommand({
       name: "codex-account",
-      description: "切换空闲 Codex Agent 的账号；留空打开账号列表",
-      argumentHint: "[账号 ID 或唯一名称]",
+      description:
+        "Switch the account for an idle Codex agent. Leave blank to open the account list.",
+      argumentHint: "[account ID or unique name]",
       context: "agent",
       onSubmit: async ({ args, agent, rpc: call, openScreen }) => {
         if (!args.trim()) {
           openScreen({ screenId: "accounts", params: { agentId: agent.id } });
           return;
         }
-        if (agent.provider !== "codex") throw new Error("此命令只支持 Codex Agent。");
+        if (agent.provider !== "codex")
+          throw new Error("This command is only available for Codex agents.");
         const snapshot = await call(rpc.listAccounts, {});
         const matches = snapshot.accounts.filter(
           (account) => account.id === args.trim() || account.name === args.trim(),
         );
         if (matches.length !== 1)
-          throw new Error("账号不存在或名称不唯一，请打开 /codex-accounts 查看 ID。");
+          throw new Error(
+            "Account not found or name is ambiguous. Open /codex-accounts to find the account ID.",
+          );
         await call(rpc.switchAccount, { agentId: agent.id, accountId: matches[0].id });
       },
     }),

@@ -9,7 +9,7 @@ Manage several Codex/ChatGPT subscription accounts in Paseo without replacing th
 - View account plans, provider-reported quota windows, reset times and credits in the account screen and Paseo's Usage Source. These are subscription limits, not session token counts or API billing.
 - Forget an external account without deleting its files. A managed home can also be logged out and permanently removed after explicit confirmation, provided it is no longer the default or bound to an agent.
 
-The interface preview uses synthetic accounts and usage. The account screen and operational errors currently use Simplified Chinese; the account-selection label and slash commands use the names above.
+Open **Codex Accounts & Usage** in the sidebar to manage accounts, or run `/codex-accounts` in a chat to open it with the current agent selected. The interface preview uses synthetic accounts and usage.
 
 ## Setup
 

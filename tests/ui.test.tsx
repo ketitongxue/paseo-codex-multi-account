@@ -126,7 +126,7 @@ describe("account screen", () => {
     const root = renderer?.root;
     if (!root) throw new Error("screen did not mount");
     await act(async () => {
-      root.findByProps({ accessibilityLabel: "自动切换" }).props.onPress();
+      root.findByProps({ accessibilityLabel: "Auto-switch" }).props.onPress();
       await new Promise((resolve) => setTimeout(resolve, 10));
     });
     expect(state.calls.find((call) => call.name === "failover.set")?.input).toEqual({
@@ -134,7 +134,7 @@ describe("account screen", () => {
       autoContinue: true,
     });
     await act(async () => {
-      root.findByProps({ accessibilityLabel: "刷新全部额度" }).props.onPress();
+      root.findByProps({ accessibilityLabel: "Refresh all usage" }).props.onPress();
       await new Promise((resolve) => setTimeout(resolve, 10));
     });
     expect(
@@ -143,12 +143,12 @@ describe("account screen", () => {
       ),
     ).toBe(true);
     await act(async () => {
-      root.findByProps({ accessibilityLabel: "删除…" }).props.onPress();
+      root.findByProps({ accessibilityLabel: "Remove…" }).props.onPress();
     });
-    expect(JSON.stringify(renderer?.toJSON())).toContain("确认删除");
+    expect(JSON.stringify(renderer?.toJSON())).toContain("Confirm removal");
     expect(state.calls.some((call) => call.name === "accounts.delete")).toBe(false);
     await act(async () => {
-      root.findByProps({ accessibilityLabel: "确认删除" }).props.onPress();
+      root.findByProps({ accessibilityLabel: "Confirm removal" }).props.onPress();
       await new Promise((resolve) => setTimeout(resolve, 10));
     });
     expect(state.calls.find((call) => call.name === "accounts.delete")?.input).toEqual({

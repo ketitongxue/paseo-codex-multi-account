@@ -84,7 +84,7 @@ describe("official Codex secure sign-in subprocess", () => {
     expect(f.logins.active(f.account.id)?.id).toBe(result.id);
     expect(result.url).toContain("https://auth.openai.com/oauth/authorize");
     expect(result.code).toBeNull();
-    await expect(f.logins.start(f.account, "device")).rejects.toThrow("正在登录");
+    await expect(f.logins.start(f.account, "device")).rejects.toThrow("Sign-in is in progress");
     await f.logins.cancel(result.id);
     expect(f.logins.status(result.id)).toMatchObject({ status: "canceled", url: null, code: null });
     expect(f.logins.busy(f.account.id)).toBe(false);
@@ -102,7 +102,7 @@ describe("official Codex secure sign-in subprocess", () => {
     "sanitizes %s upstream output and rejects nonofficial links",
     async (scenario) => {
       const f = await setup(scenario);
-      await expect(f.logins.start(f.account, "device")).rejects.toThrow("安全登录");
+      await expect(f.logins.start(f.account, "device")).rejects.toThrow("secure sign-in");
       expect(f.logins.busy(f.account.id)).toBe(false);
       expect(() =>
         officialLoginUrl("https://auth.openai.com.evil.invalid/codex/device", "device"),
@@ -121,7 +121,7 @@ describe("official Codex secure sign-in subprocess", () => {
   it("rejects a thread invisible to the target home without creating a model turn", async () => {
     const f = await setup("missing-thread");
     await expect(nativePreflight(command, f.env)(f.account, "old-thread")).rejects.toThrow(
-      "原会话历史",
+      "original session history",
     );
     const capture = JSON.parse(await readFile(join(f.root, "capture.json"), "utf8"));
     expect(capture.home).toBe(f.account.home);
@@ -130,13 +130,13 @@ describe("official Codex secure sign-in subprocess", () => {
     const f = await setup("hang");
     const rpc = new CodexRpc(command, f.account.home, f.env);
     try {
-      await expect(rpc.request("initialize", {}, 100)).rejects.toThrow("超时");
+      await expect(rpc.request("initialize", {}, 100)).rejects.toThrow("timed out");
     } finally {
       await rpc.close();
     }
     const missing = new CodexRpc(["/not/a/codex-binary"], f.account.home, f.env);
     try {
-      await expect(missing.initialize()).rejects.toThrow("无法启动");
+      await expect(missing.initialize()).rejects.toThrow("Could not start");
     } finally {
       await missing.close();
     }

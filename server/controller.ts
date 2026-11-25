@@ -37,12 +37,14 @@ export class Controller {
   async login(accountId: string, mode: "device" | "browser") {
     const account = await this.accounts.resolve(accountId);
     if (this.mutations.has(account.id) || this.switching.inUse(account.id))
-      throw new PublicError("该账号正在变更。");
+      throw new PublicError("An account change is in progress.");
     this.mutations.add(account.id);
     try {
       const state = await this.accounts.store.read();
       if (Object.values(state.bindings).some((binding) => binding.accountId === account.id))
-        throw new PublicError("该账号已绑定 Agent；为避免替换运行中的身份，请创建另一个账号登录。");
+        throw new PublicError(
+          "This account is already bound to an agent. Create another account to sign in without replacing the active identity.",
+        );
       return await this.logins.start(account, mode);
     } finally {
       this.mutations.delete(account.id);
@@ -55,7 +57,7 @@ export class Controller {
       this.mutations.has(account.id) ||
       this.switching.inUse(account.id)
     )
-      throw new PublicError("请先结束该账号的操作。");
+      throw new PublicError("Wait for the account operation to finish.");
     this.mutations.add(account.id);
     try {
       const state = await this.accounts.store.read();
@@ -63,7 +65,9 @@ export class Controller {
         state.defaultId === account.id ||
         Object.values(state.bindings).some((binding) => binding.accountId === account.id)
       )
-        throw new PublicError("请先取消默认账号，并将已绑定 Agent 切换到其他账号或释放绑定。");
+        throw new PublicError(
+          "Clear the default account and switch bound agents to another account or release their bindings before removing this account.",
+        );
       if (purge) await this.accounts.store.assertManaged(account);
       // Claim deletion in the serialized registry before any credential or filesystem mutation.
       await this.accounts.store.change((registry) => {
@@ -71,7 +75,7 @@ export class Controller {
           registry.defaultId === account.id ||
           Object.values(registry.bindings).some((binding) => binding.accountId === account.id)
         )
-          throw new PublicError("账号绑定已变化，删除被拒绝。");
+          throw new PublicError("Removal was denied because the account binding changed.");
         registry.accounts = registry.accounts.filter((entry) => entry.id !== account.id);
         if (!registry.hidden.includes(account.home)) registry.hidden.push(account.home);
       });
@@ -105,12 +109,14 @@ export class Controller {
     }
   }
   async release(agentId: string, paseo: PaseoApi) {
-    if (this.switching.isApplying(agentId)) throw new PublicError("请等待 Agent 账号切换结束。");
+    if (this.switching.isApplying(agentId))
+      throw new PublicError("Wait for the agent's account switch to finish.");
     const live = await paseo.agents.ref(agentId).refresh();
     if (live && !live.agent.archivedAt)
-      throw new PublicError("只能释放已归档或已删除 Agent 的绑定；运行中的账号不能被遗忘。");
+      throw new PublicError("Bindings can only be released for archived or deleted agents.");
     await this.accounts.store.change((state) => {
-      if (this.switching.isApplying(agentId)) throw new PublicError("请等待 Agent 账号切换结束。");
+      if (this.switching.isApplying(agentId))
+        throw new PublicError("Wait for the agent's account switch to finish.");
       delete state.bindings[agentId];
       if (!state.released.includes(agentId)) state.released.push(agentId);
     });

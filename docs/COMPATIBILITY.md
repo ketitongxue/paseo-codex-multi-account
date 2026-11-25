@@ -1,41 +1,43 @@
-# Paseo 版本兼容性
+# Paseo compatibility
 
-## v0.2.0 的支持范围
+[简体中文](COMPATIBILITY.zh-CN.md)
 
-manifest：`>=0.14.0-beta.1 <0.18.0`。daemon 和显示插件 UI 的客户端分别检查版本，两者均需满足。
+## Supported versions in v0.2.0
 
-| Paseo 版本 | SDK 类型检查 | 双入口编译 | 生产依赖隔离编译 | 插件子进程 / RPC / Usage / hook |
+The manifest requires `>=0.14.0-beta.1 <0.18.0`. The daemon and the client displaying the plugin UI each check their own version.
+
+| Paseo version | SDK types | Both entry points compile | Production-only dependency build | Plugin subprocess, RPC, Usage, and hooks |
 | --- | --- | --- | --- | --- |
-| 0.14.0-beta.1 | 通过 | 通过 | 通过 | 通过 |
-| 0.14.0-beta.2 | 通过 | 通过 | 通过 | 通过 |
-| 0.14.0 | 通过 | 通过 | 通过 | 通过 |
-| 0.15.0-beta.1 | 通过 | 通过 | 通过 | 通过 |
-| 0.15.4 | 通过 | 通过 | 通过 | 通过 |
-| 0.16.0-beta.1 | 通过 | 通过 | 通过 | 通过 |
-| 0.16.0-beta.2 | 通过 | 通过 | 通过 | 通过 |
-| 0.16.2 | 通过 | 通过 | 通过 | 通过 |
-| 0.17.1 | 通过 | 通过 | 通过 | 通过 |
+| 0.14.0-beta.1 | Pass | Pass | Pass | Pass |
+| 0.14.0-beta.2 | Pass | Pass | Pass | Pass |
+| 0.14.0 | Pass | Pass | Pass | Pass |
+| 0.15.0-beta.1 | Pass | Pass | Pass | Pass |
+| 0.15.4 | Pass | Pass | Pass | Pass |
+| 0.16.0-beta.1 | Pass | Pass | Pass | Pass |
+| 0.16.0-beta.2 | Pass | Pass | Pass | Pass |
+| 0.16.2 | Pass | Pass | Pass | Pass |
+| 0.17.1 | Pass | Pass | Pass | Pass |
 
-以上为真实 npm 版本，不是向旧运行时传入不同版本字符串。开发基线保留最低版本 SDK；另外八个精确版本以开发依赖 alias 安装并锁在 shrinkwrap 中。`scripts/paseo-targets.ts` 从各 server 自己的依赖范围解析匹配的 plugin/client/protocol 并校验 package version；`npm run compatibility` 对可发布代码逐版本做 TypeScript 检查。Vitest 逐版本运行真实编译器与对应 plugin-process 子进程。
+Checks use the published npm packages for each version. Development uses the oldest supported SDK as its baseline and installs the other eight versions as aliases pinned in the shrinkwrap. `scripts/paseo-targets.ts` resolves each server's matching plugin, client, and protocol packages and checks their package versions. `npm run compatibility` type-checks publishable code against each SDK, and Vitest runs each release's compiler and plugin subprocess.
 
-开发依赖不随 `npm ci --omit=dev` 的生产安装加载。运行时仍只有原有 TOML 解析依赖，没有更改 token 存储、注册表格式或迁移账号。
+`npm ci --omit=dev` excludes compatibility-test packages. TOML parsing remains the sole runtime dependency. v0.2.0 retains the existing token storage and registry format, so accounts require no migration.
 
-## API 与回归检查
+## API and regression coverage
 
-- 有新 lifecycle API 的宿主使用 `addHook("agent.open.before", handler)` 与 `addHook("agent.turn.after", handler)`，老宿主使用 `before("agent.session_open", handler)` 与 `on("agent.turn_ended", handler)`。按能力检测，只注册一次，不会在新 API 拒绝注册时静默降级；保留 this 和原样清理函数。
-- 0.16 新增只读会话 metadata 和后台 Agent 标记，0.17 在会话打开请求中新增可选 `appendSystemPrompt` 并移除已弃用的 `agent.turn.after` 空 `timeline` 字段。本插件不读取该字段，并通过真实 IPC 验证 metadata、background 与 `appendSystemPrompt` 在账号环境注入、非 Codex provider 及重载恢复时保持不变，避免丢失其他插件数据或改变 Agent 可见性。
-- 0.16/0.17 的客户端引用、Composer、Worktree Manager、Workspace Row Badge 等 API 为扩展接口，原有创建、导航及重载 API 保持兼容；Usage Source 核心合同保持一致（0.17 新增的可选 `durationSeconds`、`observedAt`、`launch`、`provider` 不破坏现有实现）。
-- 逐版本测试账号选择、CODEX_HOME、工具元数据、Usage Source、错误与卸载/重载绑定保留；账号固定、失败回退、删除预约与凭据保密测试保持不变，Pi provider 不受影响。
+- Hosts with the newer lifecycle API use `addHook("agent.open.before", handler)` and `addHook("agent.turn.after", handler)`. Older hosts use `before("agent.session_open", handler)` and `on("agent.turn_ended", handler)`. The plugin detects which API is available and registers each handler once. Registration errors from the new API surface directly. The plugin preserves the receiver and cleanup callbacks.
+- Paseo 0.16 added read-only session metadata and a background-agent flag. Paseo 0.17 added optional `appendSystemPrompt` to session open requests and removed the deprecated empty `timeline` field from `agent.turn.after`. The plugin does not read that field. IPC tests verify metadata, the background flag, and `appendSystemPrompt` when injecting account environments, handling non-Codex providers, and restoring bindings after reloads.
+- The client reference, Composer, Worktree Manager, and Workspace Row Badge APIs added in 0.16 and 0.17 extend the existing client API. Agent creation, navigation, and reload remain compatible. The core Usage Source contract remains compatible with the optional `durationSeconds`, `observedAt`, `launch`, and `provider` fields introduced in 0.17.
+- Tests cover account selection, `CODEX_HOME`, tool metadata, Usage Source, errors, and saved bindings after unload and reload for each version. Regression tests cover account pinning, rollback, deletion reservations, credential confidentiality, and preserving the Pi provider environment.
 
-0.13 缺少本插件依赖的完整 0.14 会话打开/工具行为，因此不声称向下兼容。未经验证的 0.18+ 仍拒绝加载。后续扩展前应增加精确 SDK 与真实运行时测试，而不是删除兼容上限。
+Paseo 0.13 lacks the session-open and tool behavior this plugin uses. Unverified 0.18 and later versions are outside the manifest range. Expanding the range requires pinned SDK and runtime checks for the added versions.
 
-## 从旧版本升级
+## Upgrade from an earlier release
 
-v0.1.0 的 `<0.15.0`、v0.1.1 的 `<0.16.0`、v0.1.2 的 `<0.17.0` 拒绝较新 daemon 属于旧 manifest 的预期行为，不代表账号损坏，也无需降级 Paseo 或修改 Pi 配置。
+v0.1.0 capped support below 0.15.0, v0.1.1 below 0.16.0, and v0.1.2 below 0.17.0. If an older plugin refuses to load on a newer daemon, update the plugin to a version that supports that daemon.
 
-- 本地目录：更新到 v0.2.0 或后续版本，然后在插件列表重新加载。
-- 直接 Git：使用插件列表的更新入口；兼容 CLI 可用 `--ref v0.2.0` 指定精确版本。
-- 市场：市场安装使用官方批准的固定 commit，GitHub release 不会自动推进市场 pin。更新审核通过后在插件列表检查更新。
-- 市场还未同步时，可在桌面插件来源使用 `git:ketitongxue/paseo-codex-multi-account`。若提示相同 ID 已安装，先停止/归档需要严格固定账号的 Codex Agent，再移除旧插件安装记录并按 Git 来源安装。移除插件不删除独立的账号元数据或 Codex home，但移除期间没有 hook。
+- **Local installation**. Update the source to v0.2.0 or later, then reload the plugin from the plugin list.
+- **Direct Git installation**. Update from the plugin list. A compatible CLI can select an exact release via `--ref v0.2.0`.
+- **Marketplace installation**. The marketplace installs a reviewed, pinned commit. Check for updates in the plugin list after the new revision is approved.
+- **While a marketplace update is pending**. Use `git:ketitongxue/paseo-codex-multi-account` in the desktop plugin sources. If Paseo reports that the same ID is already installed, stop or archive agents that require strict account pinning before removing the existing plugin installation and switching to the Git source. Removing the installation preserves separate account metadata and Codex homes. Session hooks are unavailable while the plugin is removed.
 
-不必升级全局 CLI，不要编辑市场缓存、移动旧 release tag 或改写原生认证文件来绕过检查。本更新不会自动升级/重启生产 daemon，也不修改 Pi 配置。完整公开 revision 安装验收及 CI 链接见对应 GitHub Release。
+Updating the plugin leaves the global CLI, production daemon, native credentials, and Pi configuration intact. Installation checks for the public revisions and CI links are recorded in the corresponding [GitHub releases](https://github.com/ketitongxue/paseo-codex-multi-account/releases).

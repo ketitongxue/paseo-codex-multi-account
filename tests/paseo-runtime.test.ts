@@ -197,7 +197,7 @@ describe.each(hosts)(
           env: {},
           mcpServers: {},
         };
-        await expect(open(openHook, request)).rejects.toThrow("过期");
+        await expect(open(openHook, request)).rejects.toThrow("expired");
         // Refresh the synthetic fixture without any network or real Codex process.
         const { authJson } = await import("./helpers");
         const { writeFile } = await import("node:fs/promises");

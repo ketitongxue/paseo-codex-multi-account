@@ -67,7 +67,7 @@ describe("quota parsing and read-only Usage Source", () => {
       problem: { kind: "rejected", status: 403 },
     });
     fetcher.mockResolvedValue(new Response("<html>SECRET</html>"));
-    await expect(fetchUsage(auth, fetcher)).rejects.toThrow("无法识别");
+    await expect(fetchUsage(auth, fetcher)).rejects.toThrow("unrecognized data");
     expect(await fetchUsage({ ...auth, expiresAt: 1 }, fetcher)).toMatchObject({
       status: "unavailable",
       problem: { kind: "expired" },
@@ -81,7 +81,7 @@ describe("quota parsing and read-only Usage Source", () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValue(new Response(JSON.stringify({ detail: "SENSITIVE UPSTREAM ERROR" })));
-    await expect(fetchUsage(auth, fetcher)).rejects.toThrow("无法识别");
+    await expect(fetchUsage(auth, fetcher)).rejects.toThrow("unrecognized data");
     expect(() => parseUsage({})).toThrow();
   });
   it.each([401, 403, 429, 500])(
@@ -216,7 +216,7 @@ describe("quota parsing and read-only Usage Source", () => {
       return new Response(JSON.stringify(quota));
     });
     expect(await service.forAccount(a)).toMatchObject({
-      report: { status: "error", error: expect.stringContaining("凭据发生变化") },
+      report: { status: "error", error: expect.stringContaining("credentials changed") },
     });
     expect(() => {
       throw new PublicError("safe");

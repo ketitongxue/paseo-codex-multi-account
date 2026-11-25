@@ -93,10 +93,12 @@ export default function contribute(server: PluginServerContext) {
         const providerEnv = z.record(z.string(), z.unknown()).parse(provider.env ?? {});
         for (const key of AUTH_OVERRIDES)
           if (providerEnv[key])
-            throw new PublicError(`Codex provider 环境变量 ${key} 覆盖订阅认证，请先移除。`);
+            throw new PublicError(
+              `The Codex provider environment variable ${key} overrides subscription authentication. Remove it first.`,
+            );
         if (provider.command)
           throw new PublicError(
-            "请先移除 Codex provider 的自定义 command；插件不会覆盖可能破坏账号隔离的启动器。",
+            "Remove the custom Codex provider command first. A custom launcher can interfere with account isolation.",
           );
       }
       return request.purpose === "interactive"

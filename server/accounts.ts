@@ -59,28 +59,30 @@ export class Accounts {
     if (names.length === 1) return names[0];
     throw new PublicError(
       names.length
-        ? "账号名称不唯一，请使用账号 ID。"
-        : "账号不存在或已隐藏，请重新发现或保存账号。",
+        ? "More than one account has that name. Use an account ID."
+        : "Account not found or hidden. Rediscover or save the account.",
     );
   }
   async credential(account: Account) {
     if ((await realpath(account.home)) !== account.home)
-      throw new PublicError("CODEX_HOME 路径已被替换，操作已拒绝。");
+      throw new PublicError("The operation was denied because the CODEX_HOME path was replaced.");
     if (account.managed) {
       await this.store.assertManaged(account);
       const config = await homeConfig(account.home);
       if (config.mode !== "keyring" || !config.direct)
-        throw new PublicError("托管账号必须保持严格 direct keyring 模式。");
+        throw new PublicError("Managed accounts must use strict direct keyring mode.");
     }
     return readCredential(account.home, this.keyring);
   }
   async requireCredential(account: Account) {
     const auth = await this.credential(account);
     if (!auth || auth.identity.expired)
-      throw new PublicError("所选账号未登录或凭据已过期，请先使用 Codex 重新认证。");
+      throw new PublicError(
+        "The selected account is signed out or its credentials have expired. Sign in again through Codex.",
+      );
     if (!auth.accountId)
       throw new PublicError(
-        "凭据缺少稳定的 ChatGPT account ID，不能安全绑定 Agent；请通过 Codex 重新登录。",
+        "A stable ChatGPT account ID is required to bind an agent. Sign in again through Codex.",
       );
     return auth;
   }
@@ -91,7 +93,7 @@ export class Accounts {
         ...account,
         saved,
         identity: auth?.identity ?? null,
-        problem: auth ? null : "未登录 ChatGPT 订阅账号",
+        problem: auth ? null : "No ChatGPT subscription account is signed in",
         loginBusy,
       };
     } catch (error) {
@@ -138,7 +140,7 @@ export class Accounts {
     if (account) await this.requireCredential(account);
     await this.store.change((state) => {
       if (account && state.hidden.includes(account.home))
-        throw new PublicError("账号刚刚被删除，请重新保存后再选择。");
+        throw new PublicError("The account was just removed. Save it again before selecting it.");
       state.defaultId = account?.id ?? null;
     });
   }
