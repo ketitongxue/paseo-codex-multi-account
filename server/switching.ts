@@ -30,9 +30,13 @@ export class Switching {
       : undefined;
     const override = this.overrides.get(request.agentId);
     if (state.released.includes(request.agentId) && !override)
-      throw new PublicError("此 Agent 的账号绑定已释放；请显式选择账号，不能回落到默认 CLI 身份。");
+      throw new PublicError(
+        "This agent's account binding was released. Select an account explicitly to start this agent.",
+      );
     if (stored?.status === "unconfirmed" && !override)
-      throw new PublicError("此 Agent 上次切换未确认，请重新选择账号，不会自动启动未确认的身份。");
+      throw new PublicError(
+        "This agent's previous switch was unconfirmed. Select an account again before starting the agent.",
+      );
     const selector =
       override?.accountId ??
       stored?.accountId ??
@@ -43,19 +47,29 @@ export class Switching {
     for (const key of AUTH_OVERRIDES)
       if (request.env[key] || this.accounts.env[key])
         throw new PublicError(
-          `环境变量 ${key} 与 ChatGPT 账号隔离冲突，请从 Codex provider/daemon 环境中移除。`,
+          `Environment variable ${key} conflicts with ChatGPT account isolation. Remove it from the Codex provider or daemon environment.`,
         );
     const account = await this.accounts.resolve(selector);
-    if (this.busy(account.id)) throw new PublicError("该账号正在登录，暂不能启动 Agent。");
+    if (this.busy(account.id))
+      throw new PublicError(
+        "Sign-in is in progress for this account. Wait for it to finish before starting the agent.",
+      );
     const auth = await this.accounts.requireCredential(account);
-    if (this.busy(account.id)) throw new PublicError("账号正在变更，请稍后再启动 Agent。");
+    if (this.busy(account.id))
+      throw new PublicError(
+        "An account change is in progress. Try starting the agent again later.",
+      );
     const binding = override ?? stored;
     if (binding && binding.identityKey !== auth.identity.key)
-      throw new PublicError("所选 CODEX_HOME 的账号身份已改变；请显式重新选择账号。");
+      throw new PublicError(
+        "The account identity for the selected CODEX_HOME changed. Select an account again.",
+      );
     if (!stored && !override && request.purpose === "interactive")
       await this.accounts.store.change((registry) => {
         if (registry.hidden.includes(account.home) || this.busy(account.id))
-          throw new PublicError("账号正在删除或登录，绑定已拒绝。");
+          throw new PublicError(
+            "Account removal or sign-in is in progress. The account could not be bound.",
+          );
         const current = Object.hasOwn(registry.bindings, request.agentId)
           ? registry.bindings[request.agentId]
           : undefined;
@@ -67,7 +81,7 @@ export class Switching {
               current.identityKey !== auth.identity.key ||
               current.status === "unconfirmed"))
         )
-          throw new PublicError("Agent 绑定已变化，请重新打开会话。");
+          throw new PublicError("The agent binding changed. Reopen the session.");
         if (!current)
           registry.bindings[request.agentId] = {
             accountId: account.id,
@@ -81,7 +95,8 @@ export class Switching {
     return { ...request, env: { ...env, CODEX_HOME: account.home } };
   }
   async switch(agentId: string, selector: string, paseo: PaseoApi): Promise<Binding> {
-    if (this.applying.has(agentId)) throw new PublicError("此 Agent 正在切换账号。");
+    if (this.applying.has(agentId))
+      throw new PublicError("This agent is already switching accounts.");
     this.applying.add(agentId);
     let previous: Binding | undefined;
     let started = false;
@@ -89,21 +104,24 @@ export class Switching {
       const account = await this.accounts.resolve(selector);
       const reserved = new Set([account.id]);
       this.targets.set(agentId, reserved);
-      if (this.busy(account.id)) throw new PublicError("请等待该账号登录结束。");
+      if (this.busy(account.id))
+        throw new PublicError("Wait for this account's sign-in to finish.");
       const auth = await this.accounts.requireCredential(account);
       const ref = paseo.agents.ref(agentId);
       const inspect = async () => {
         const live = await ref.refresh();
-        if (!live) throw new PublicError("Agent 不存在。");
+        if (!live) throw new PublicError("Agent not found.");
         const agent = live.agent;
         if (agent.provider !== "codex" || agent.archivedAt)
-          throw new PublicError("只能切换未归档的 Codex Agent。");
+          throw new PublicError("Account switching is available only for unarchived Codex agents.");
         if (
           !["idle", "error", "closed"].includes(agent.status) ||
           agent.activeTurn ||
           agent.pendingPermissions.length
         )
-          throw new PublicError("请等待 Agent 空闲并处理权限请求后再切换。");
+          throw new PublicError(
+            "Wait until the agent is idle and resolve pending permission requests before switching.",
+          );
         return agent;
       };
       const agent = await inspect();
@@ -128,7 +146,7 @@ export class Switching {
       started = true;
       const reloaded = await ref.reload();
       if (!reloaded || this.observed.get(agentId) !== account.id)
-        throw new PublicError("新账号的 session_open 未得到确认。");
+        throw new PublicError("The new account's session_open was unconfirmed.");
       await this.accounts.store.change((registry) => {
         registry.bindings[agentId] = binding;
         registry.released = registry.released.filter((id) => id !== agentId);
@@ -162,13 +180,13 @@ export class Switching {
         });
         throw new PublicError(
           restored
-            ? "切换失败，已恢复原账号。"
-            : "切换与回退未能确认；请勿继续发送消息，重新选择账号或新建 Agent。",
+            ? "The switch failed. The original account was restored."
+            : "The switch and rollback could not be confirmed. Select an account again or create a new agent before sending messages.",
         );
       }
       if (started)
         throw new PublicError(
-          "切换失败，原会话账号未知，已标记为未确认；请显式重选原账号或新建 Agent。",
+          "The switch failed. The original session account is unknown and the binding is marked unconfirmed. Select the original account or create a new agent.",
         );
       throw error;
     } finally {
@@ -188,13 +206,13 @@ export function nativePreflight(command: string[], env: NodeJS.ProcessEnv): Pref
         account?: { type?: string };
       };
       if (value?.account?.type !== "chatgpt")
-        throw new PublicError("目标账号不是已登录的 ChatGPT 订阅。");
+        throw new PublicError("The target account must be signed in to a ChatGPT subscription.");
       if (threadId) {
         try {
           await rpc.request("thread/read", { threadId, includeTurns: false });
         } catch {
           throw new PublicError(
-            "目标 CODEX_HOME 无法读取原会话历史，已拒绝切换。请用目标账号新建 Agent，或先由你配置共享原生历史。",
+            "The target CODEX_HOME cannot read the original session history. Create a new agent with the target account or configure shared native session history before switching.",
           );
         }
       }

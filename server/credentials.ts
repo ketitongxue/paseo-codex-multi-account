@@ -21,7 +21,7 @@ export async function readKeyring(home: string): Promise<string | null> {
       ? ["find-generic-password", "-s", "Codex Auth", "-a", account, "-w"]
       : ["lookup", "service", "Codex Auth", "username", account];
   if (process.platform !== "darwin" && process.platform !== "linux")
-    throw new PublicError("此平台尚不支持读取 Codex keyring。");
+    throw new PublicError("Reading the Codex keyring is unsupported on this platform.");
   return new Promise((resolve, reject) => {
     execFile(
       executable,
@@ -36,7 +36,7 @@ export async function readKeyring(home: string): Promise<string | null> {
           return resolve(null);
         reject(
           new PublicError(
-            "无法读取系统安全存储；请解锁 Keychain/keyring（Linux 需要 Secret Service 与 secret-tool）。",
+            "Could not read system credential storage. Unlock Keychain or the keyring. Linux requires Secret Service and secret-tool.",
           ),
         );
       },
@@ -66,7 +66,7 @@ export async function homeConfig(home: string): Promise<HomeConfig> {
       subscription,
     };
   } catch {
-    throw new PublicError("无法解析该 CODEX_HOME 的 config.toml。");
+    throw new PublicError("Could not parse config.toml for this CODEX_HOME.");
   }
 }
 const Auth = z.object({
@@ -118,9 +118,13 @@ export async function readCredential(
 ): Promise<Credential | null> {
   const config = await homeConfig(home);
   if (!config.subscription)
-    throw new PublicError("该 Codex 配置覆盖了 ChatGPT 订阅认证，不能用于账号切换。");
+    throw new PublicError(
+      "This Codex configuration overrides ChatGPT subscription authentication and cannot be used for account switching.",
+    );
   if (!config.direct && config.mode !== "file")
-    throw new PublicError("暂不支持 Codex secrets keyring 后端；请使用 direct 后端或原 CLI。");
+    throw new PublicError(
+      "The Codex secrets keyring backend is unsupported. Use the direct backend or the original CLI.",
+    );
   let raw: string | null = null;
   let storage: "file" | "keyring" = "file";
   if (config.mode === "ephemeral") return null;
@@ -138,7 +142,9 @@ export async function readCredential(
   try {
     value = Auth.parse(JSON.parse(raw));
   } catch {
-    throw new PublicError("该账号认证数据无效，请通过 Codex 重新登录。");
+    throw new PublicError(
+      "This account has invalid authentication data. Sign in again through Codex.",
+    );
   }
   if (!value.tokens || value.OPENAI_API_KEY) return null;
   const { access_token: token, id_token: idToken } = value.tokens;

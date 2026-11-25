@@ -10,15 +10,15 @@ import contribute from "../index.client";
 
 describe("client registration and display", () => {
   it("never shows unknown quota as zero, and explains expired/rejected logins", () => {
-    expect(percent(null)).toBe("未知");
+    expect(percent(null)).toBe("Unknown");
     expect(percent(0)).toBe("0%");
-    expect(percent(Number.NaN)).toBe("未知");
+    expect(percent(Number.NaN)).toBe("Unknown");
     expect(
       usageProblem({
         status: "unavailable",
         problem: { kind: "expired", expiresAt: "2020-01-01" },
       }),
-    ).toContain("过期");
+    ).toContain("expired");
     expect(
       usageProblem({ status: "unavailable", problem: { kind: "rejected", status: 401 } }),
     ).toContain("401");

@@ -33,7 +33,7 @@ try {
     logLevel: "silent",
   });
   const javascript = await readFile(bundle);
-  const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Codex account preview</title><style>html,body,#root{height:100%;margin:0}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script src="/preview.js"></script></body></html>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Codex account preview</title><style>html,body,#root{height:100%;margin:0}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script src="/preview.js"></script></body></html>`;
   server.on("request", (request, response) => {
     response.setHeader(
       "Content-Security-Policy",

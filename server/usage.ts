@@ -105,7 +105,7 @@ export function parseUsage(value: unknown): Report {
 }
 export class RateLimited extends PublicError {
   constructor(readonly retryMs: number) {
-    super("额度接口限流，请稍后重试。");
+    super("The usage endpoint is rate-limited. Try again later.");
   }
 }
 // Only account-wide windows (5-hour/weekly, built with summary: true) prove that the
@@ -170,7 +170,7 @@ export async function fetchUsage(
         signal: controller.signal,
       });
     } catch {
-      throw new PublicError("额度查询超时或网络不可用。");
+      throw new PublicError("The usage request timed out or the network is unavailable.");
     }
     if (response.status === 401 || response.status === 403)
       return {
@@ -185,7 +185,7 @@ export async function fetchUsage(
         Number.isFinite(delay) ? Math.max(1000, Math.min(86400000, delay)) : 60000,
       );
     }
-    if (!response.ok) throw new PublicError(`额度接口返回 HTTP ${response.status}。`);
+    if (!response.ok) throw new PublicError(`The usage endpoint returned HTTP ${response.status}.`);
     try {
       // Bound the body even if the upstream ignores Content-Length.
       const reader = response.body?.getReader();
@@ -205,7 +205,9 @@ export async function fetchUsage(
       }
       return parseUsage(JSON.parse(Buffer.concat(chunks).toString("utf8")));
     } catch {
-      throw new PublicError("额度接口返回了无法识别的数据；未显示估算额度。");
+      throw new PublicError(
+        "The usage endpoint returned unrecognized data. Estimated usage is unavailable.",
+      );
     }
   } finally {
     clearTimeout(timer);
@@ -242,7 +244,8 @@ export class Usage {
     else this.running++;
     try {
       const auth = await this.accounts.credential(account);
-      if (!auth) throw new PublicError("请先通过 Codex 登录 ChatGPT 订阅账号。");
+      if (!auth)
+        throw new PublicError("Sign in to a ChatGPT subscription account through Codex first.");
       const cached = this.cache.get(account.id),
         now = this.now();
       const same =
@@ -269,7 +272,9 @@ export class Usage {
         after.identity.key !== auth.identity.key ||
         after.fingerprint !== auth.fingerprint
       )
-        throw new PublicError("查询期间账号凭据发生变化，请重新刷新。");
+        throw new PublicError(
+          "Account credentials changed during the request. Refresh usage again.",
+        );
       const row: UsageRow = {
         accountId: account.id,
         report,
@@ -326,10 +331,10 @@ export class Usage {
             this.sessionHomes.get(input.accountId) ??
             (await this.accounts.resolve(input.accountId));
           if (account.home !== input.home)
-            throw new PublicError("账号路径已变化，请重新发现账号。");
+            throw new PublicError("The account path changed. Rediscover the account.");
           const auth = await this.accounts.credential(account);
           if (!auth || auth.identity.key !== input.identityKey)
-            throw new PublicError("账号身份已变化，请重新打开 Usage。");
+            throw new PublicError("The account identity changed. Reopen Usage.");
           const { report } = await this.forAccount(account, true);
           const after = await this.accounts.credential(account);
           if (
@@ -337,7 +342,7 @@ export class Usage {
             after.identity.key !== input.identityKey ||
             after.fingerprint !== auth.fingerprint
           )
-            throw new PublicError("查询期间凭据发生变化，请重新打开 Usage。");
+            throw new PublicError("Credentials changed during the request. Reopen Usage.");
           return report;
         } catch (error) {
           return { status: "error", error: safeMessage(error) };

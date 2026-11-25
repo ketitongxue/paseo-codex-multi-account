@@ -26,7 +26,7 @@ describe("account deletion and retired bindings", () => {
     const f = await setup(),
       a = await f.home(".codex-keti");
     const before = await readFile(join(a.home, "auth.json"), "utf8");
-    await expect(f.controller.remove(a.id, true)).rejects.toThrow("外部");
+    await expect(f.controller.remove(a.id, true)).rejects.toThrow("external CODEX_HOME");
     expect((await f.store.read()).hidden).toEqual([]);
     await f.controller.remove(a.id, false);
     expect(await f.accounts.all()).toEqual([]);
@@ -40,7 +40,7 @@ describe("account deletion and retired bindings", () => {
     const f = await setup(),
       a = await f.home(".codex-keti");
     await f.accounts.setDefault(a.id);
-    await expect(f.controller.remove(a.id, false)).rejects.toThrow("默认");
+    await expect(f.controller.remove(a.id, false)).rejects.toThrow("default account");
     await f.accounts.setDefault(null);
     const identity = await f.accounts.credential(a);
     if (!identity) throw new Error();
@@ -51,11 +51,11 @@ describe("account deletion and retired bindings", () => {
         status: "selected",
       };
     });
-    await expect(f.controller.remove(a.id, false)).rejects.toThrow("绑定");
+    await expect(f.controller.remove(a.id, false)).rejects.toThrow("bindings");
     const live = {
       agents: { ref: () => ({ refresh: async () => ({ agent: { archivedAt: null } }) }) },
     } as unknown as PaseoApi;
-    await expect(f.controller.release("agent-one", live)).rejects.toThrow("归档");
+    await expect(f.controller.release("agent-one", live)).rejects.toThrow("archived");
     const archived = {
       agents: { ref: () => ({ refresh: async () => ({ agent: { archivedAt: "2026-01-01" } }) }) },
     } as unknown as PaseoApi;
@@ -76,7 +76,7 @@ describe("account deletion and retired bindings", () => {
         tools: [],
         mcpServers: {},
       }),
-    ).rejects.toThrow("绑定已释放");
+    ).rejects.toThrow("account binding was released");
   });
   it("blocks deletion, re-login and binding release while a switch may still need rollback", async () => {
     const f = await setup(),
@@ -108,9 +108,11 @@ describe("account deletion and retired bindings", () => {
       refresh: async () => ({ agent }),
       reload: async () => {
         expect((await f.store.read()).bindings[request.agentId].accountId).toBe(b.id);
-        await expect(f.controller.remove(a.id, false)).rejects.toThrow("操作");
-        await expect(f.controller.login(a.id, "device")).rejects.toThrow("变更");
-        await expect(f.controller.release(request.agentId, paseo)).rejects.toThrow("切换结束");
+        await expect(f.controller.remove(a.id, false)).rejects.toThrow("account operation");
+        await expect(f.controller.login(a.id, "device")).rejects.toThrow("account change");
+        await expect(f.controller.release(request.agentId, paseo)).rejects.toThrow(
+          "account switch to finish",
+        );
         await f.controller.switching.open({ ...request, reason: "refresh" });
         return { agent };
       },
@@ -132,7 +134,7 @@ describe("account deletion and retired bindings", () => {
     const { rm } = await import("node:fs/promises");
     await rm(b.home, { recursive: true });
     await symlink(outside, b.home);
-    await expect(f.controller.remove(b.id, true)).rejects.toThrow("不安全");
+    await expect(f.controller.remove(b.id, true)).rejects.toThrow("unsafe");
     expect(await readdir(outside)).toEqual([]);
     expect((await f.store.read()).accounts.some((a) => a.id === b.id)).toBe(true);
   });

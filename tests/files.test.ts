@@ -20,7 +20,7 @@ describe("bounded read-only credential/config files", () => {
       link = join(f.user, "auth.json");
     await writeFile(target, "x".repeat(1024 * 1024 + 1));
     await symlink(target, link);
-    await expect(optionalText(link).then((text) => text?.length)).rejects.toThrow("过大");
+    await expect(optionalText(link).then((text) => text?.length)).rejects.toThrow("too large");
   });
   it("permits ordinary external config symlinks without rewriting their targets", async () => {
     const f = await setup();
@@ -37,6 +37,6 @@ describe("bounded read-only credential/config files", () => {
     const f = await setup();
     const directory = join(f.root, "directory");
     await mkdir(directory);
-    await expect(optionalText(directory)).rejects.toThrow("普通文件");
+    await expect(optionalText(directory)).rejects.toThrow("regular files");
   });
 });

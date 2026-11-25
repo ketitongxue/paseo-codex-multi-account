@@ -46,7 +46,9 @@ export class Store {
     try {
       return Registry.parse(JSON.parse(text));
     } catch {
-      throw new PublicError("账号注册表损坏，已停止写入；请恢复备份。");
+      throw new PublicError(
+        "The account registry is corrupted and writes are disabled. Restore it from a backup.",
+      );
     }
   }
   async change<T>(update: (state: Registry) => T | Promise<T>): Promise<T> {
@@ -77,7 +79,9 @@ export class Store {
   }
   async assertManaged(account: Account): Promise<void> {
     if (!account.managed)
-      throw new PublicError("外部 CODEX_HOME 只读；请用原 Codex CLI 登录，或创建插件托管账号。");
+      throw new PublicError(
+        "An external CODEX_HOME is read-only. Sign in using the original Codex CLI or create a plugin-managed account.",
+      );
     try {
       const home = await lstat(account.home);
       const root = await realpath(this.homes);
@@ -92,8 +96,10 @@ export class Store {
       if ((await lstat(this.homes)).isSymbolicLink() || (await lstat(this.root)).isSymbolicLink())
         throw new Error();
     } catch (error) {
-      if (missing(error)) throw new PublicError("托管账号目录已丢失。");
-      throw new PublicError("托管账号目录不安全，操作已拒绝。");
+      if (missing(error)) throw new PublicError("The managed account directory is missing.");
+      throw new PublicError(
+        "The operation was denied because the managed account directory is unsafe.",
+      );
     }
   }
 }

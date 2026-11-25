@@ -28,6 +28,7 @@
     "OVERVIEW.*.md",
     "npm-shrinkwrap.json",
     "README.md",
+    "README.zh-CN.md",
     "SECURITY.md",
     "LICENSE"
   ],

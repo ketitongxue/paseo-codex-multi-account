@@ -85,7 +85,7 @@ describe("account registry and credentials", () => {
   it("does not accept an expired login as the default for new Agents", async () => {
     const f = await setup(),
       a = await f.home(".codex-expired-default", "expired", 1);
-    await expect(f.accounts.setDefault(a.id)).rejects.toThrow("过期");
+    await expect(f.accounts.setDefault(a.id)).rejects.toThrow("expired");
     expect((await f.store.read()).defaultId).toBeNull();
   });
   it("never falls back from a failed keyring to an older file credential", async () => {
@@ -102,20 +102,20 @@ describe("account registry and credentials", () => {
   });
   it("fails closed on corrupt registry, symlinked managed homes and unsafe paths", async () => {
     const f = await setup();
-    await expect(f.accounts.save("relative-home", "bad")).rejects.toThrow("绝对");
+    await expect(f.accounts.save("relative-home", "bad")).rejects.toThrow("absolute");
     const a = await f.store.create("safe");
     const external = join(f.user, "external");
     await mkdir(external);
     await symlink(external, join(f.store.homes, "link"));
     await expect(
       f.store.assertManaged({ ...a, home: join(f.store.homes, "link") }),
-    ).rejects.toThrow("不安全");
+    ).rejects.toThrow("unsafe");
     await writeFile(f.store.path, '{"tokens":"SENSITIVE"');
     await expect(
       f.store.change((state) => {
         state.defaultId = a.id;
       }),
-    ).rejects.toThrow("注册表损坏");
+    ).rejects.toThrow("account registry is corrupted");
     expect(await readFile(f.store.path, "utf8")).toBe('{"tokens":"SENSITIVE"');
   });
   it("handles missing, API key, expired and malformed credentials without returning tokens", async () => {

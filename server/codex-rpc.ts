@@ -53,14 +53,18 @@ export class CodexRpc {
     });
     this.closed = new Promise((resolve) =>
       this.child.once("close", () => {
-        this.fail(new PublicError("Codex app-server 已退出。"));
+        this.fail(new PublicError("Codex app-server exited."));
         resolve();
       }),
     );
     this.child.on("error", () =>
-      this.fail(new PublicError("无法启动 Codex CLI；请确认已安装且在 PATH 中。")),
+      this.fail(
+        new PublicError("Could not start the Codex CLI. Check that it is installed and on PATH."),
+      ),
     );
-    this.child.stdin.on("error", () => this.fail(new PublicError("Codex app-server 管道已关闭。")));
+    this.child.stdin.on("error", () =>
+      this.fail(new PublicError("The Codex app-server pipe closed.")),
+    );
     // Never log or retain stderr: upstream diagnostics can include authorization material.
     this.child.stderr.resume();
     this.child.stdout.setEncoding("utf8").on("data", (chunk: string) => this.receive(chunk));
@@ -76,7 +80,7 @@ export class CodexRpc {
   private receive(chunk: string): void {
     this.buffer += chunk;
     if (this.buffer.length > 2 * 1024 * 1024) {
-      this.fail(new PublicError("Codex 响应过大。"));
+      this.fail(new PublicError("The Codex response is too large."));
       this.kill("SIGKILL");
       return;
     }
@@ -89,7 +93,7 @@ export class CodexRpc {
         value = JSON.parse(line);
         if (!value || typeof value !== "object") throw new Error();
       } catch {
-        this.fail(new PublicError("Codex app-server 返回无效协议数据。"));
+        this.fail(new PublicError("Codex app-server returned invalid protocol data."));
         return;
       }
       if (typeof value.id === "number") {
@@ -98,7 +102,9 @@ export class CodexRpc {
         clearTimeout(request.timer);
         this.pending.delete(value.id);
         if (value.error)
-          request.reject(new PublicError("Codex 请求失败；请检查 CLI 登录状态和版本。"));
+          request.reject(
+            new PublicError("The Codex request failed. Check the CLI version and sign-in status."),
+          );
         else request.resolve(value.result);
       } else if (typeof value.method === "string") {
         for (const listener of this.listeners)
@@ -115,7 +121,7 @@ export class CodexRpc {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new PublicError("Codex 请求超时。"));
+        reject(new PublicError("The Codex request timed out."));
       }, timeout);
       this.pending.set(id, { resolve, reject, timer });
       this.child.stdin.write(`${JSON.stringify({ id, method, params })}\n`);
@@ -148,7 +154,7 @@ export class CodexRpc {
   async close(): Promise<void> {
     this.listeners.clear();
     this.buffer = "";
-    this.fail(new PublicError("Codex 请求已取消。"));
+    this.fail(new PublicError("The Codex request was canceled."));
     this.child.stdin.end();
     const term = setTimeout(() => this.kill("SIGTERM"), 100);
     const force = setTimeout(() => this.kill("SIGKILL"), 800);
