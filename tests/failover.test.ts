@@ -1,3 +1,5 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { PaseoApi } from "@getpaseo/client";
 import type {
   PluginHookAgent,
@@ -8,8 +10,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Failover } from "../server/failover";
 import { Switching } from "../server/switching";
 import { exhaustedWindows, minRemainingPct, parseUsage, Usage } from "../server/usage";
-import { ACCOUNT_LABEL, type FailoverSettings } from "../shared/contracts";
-import { fixture, quota } from "./helpers";
+import { ACCOUNT_LABEL, type Account, type FailoverSettings } from "../shared/contracts";
+import { authJson, fixture, quota } from "./helpers";
 
 const cleanups: Array<() => Promise<void>> = [];
 const NOW = 1_800_000_000_000;
@@ -83,7 +85,23 @@ function notice(ref: { timeline: { append: ReturnType<typeof vi.fn> } }) {
   return item?.data as Record<string, unknown>;
 }
 
-async function harness(settings?: FailoverSettings) {
+async function approve(
+  f: Awaited<ReturnType<typeof fixture>>,
+  agentId: string,
+  ...accounts: Account[]
+) {
+  const targets = await Promise.all(
+    accounts.map(async (account) => ({
+      accountId: account.id,
+      identityKey: (await f.accounts.requireCredential(account)).identity.key,
+    })),
+  );
+  await f.store.change((state) => {
+    state.failoverTargets[agentId] = targets;
+  });
+}
+
+async function harness(settings?: FailoverSettings, preflight = async () => {}) {
   const f = await fixture();
   cleanups.push(f.cleanup);
   const exp = Math.floor(NOW / 1000) + 7200;
@@ -121,11 +139,7 @@ async function harness(settings?: FailoverSettings) {
     }),
     now,
   );
-  const switching = new Switching(
-    f.accounts,
-    () => false,
-    async () => {},
-  );
+  const switching = new Switching(f.accounts, () => false, preflight);
   const failover = new Failover(f.accounts, usage, switching, () => false, now);
   if (settings) await f.store.change((state) => void (state.failover = settings));
   await switching.open(request({ labels: { [ACCOUNT_LABEL]: keti.id } }));
@@ -219,11 +233,73 @@ describe("failover after a turn", () => {
     expect(host.ref.timeline.append).toHaveBeenCalledOnce();
     expect((await t.f.store.read()).bindings["agent-one"].accountId).toBe(t.keti.id);
   });
-  it("switches automatically, continues a failed turn and records the departure", async () => {
+  it("falls back to a manual offer for older Auto registries and approvals from another agent", async () => {
+    const t = await harness({ mode: "auto", autoContinue: true });
+    const disk = await t.f.store.read();
+    const { failoverTargets: _targets, ...legacy } = disk;
+    await writeFile(t.f.store.path, JSON.stringify(legacy));
+    expect((await t.f.store.read()).failoverTargets).toEqual({});
+    t.setQuota("keti", 100);
+    const host = daemon(t.switching);
+    await t.failover.onTurnEnded(failed, context(host.paseo));
+    expect(notice(host.ref)).toMatchObject({ variant: "exhausted", toName: "cody", auto: false });
+    await approve(t.f, "agent-two", t.keti, t.cody);
+    await t.failover.onTurnEnded({ ...failed, turnId: "turn-2" }, context(host.paseo));
+    expect(host.ref.reload).not.toHaveBeenCalled();
+    expect(host.ref.send).not.toHaveBeenCalled();
+    expect((await t.f.store.read()).bindings["agent-one"].accountId).toBe(t.keti.id);
+  });
+  it("leaves Auto suspended after a manual switch to an account outside the approved group", async () => {
+    const t = await harness({ mode: "auto", autoContinue: true });
+    const other = await t.f.home(".codex-other", "other", inSeconds(7200));
+    await approve(t.f, "agent-one", t.keti, t.cody);
+    const host = daemon(t.switching);
+    await t.switching.switch("agent-one", other.id, host.paseo);
+    t.setQuota("other", 100);
+    await t.failover.onTurnEnded(failed, context(host.paseo));
+    expect(host.ref.reload).toHaveBeenCalledOnce();
+    expect(host.ref.send).not.toHaveBeenCalled();
+    expect(notice(host.ref)).toMatchObject({
+      variant: "exhausted",
+      fromName: "other",
+      auto: false,
+    });
+    expect((await t.f.store.read()).bindings["agent-one"].accountId).toBe(other.id);
+  });
+  it("does not accept a replacement identity at an approved account home", async () => {
+    const t = await harness({ mode: "auto", autoContinue: true });
+    await approve(t.f, "agent-one", t.keti, t.cody);
+    await writeFile(join(t.cody.home, "auth.json"), authJson("replacement", inSeconds(7200)));
+    t.setQuota("keti", 100);
+    const host = daemon(t.switching);
+    await t.failover.onTurnEnded(failed, context(host.paseo));
+    expect(host.ref.reload).not.toHaveBeenCalled();
+    expect(host.ref.send).not.toHaveBeenCalled();
+    expect(notice(host.ref)).toMatchObject({ variant: "exhausted", toName: "cody", auto: false });
+  });
+  it("checks approval again if it changes during switch preflight", async () => {
+    const preflight = vi.fn(async () => {});
+    const t = await harness({ mode: "auto", autoContinue: true }, preflight);
+    await approve(t.f, "agent-one", t.keti, t.cody);
+    preflight.mockImplementation(async () => {
+      await approve(t.f, "agent-one", t.keti);
+    });
+    t.setQuota("keti", 100);
+    const host = daemon(t.switching);
+    await t.failover.onTurnEnded(failed, context(host.paseo));
+    expect(preflight).toHaveBeenCalledOnce();
+    expect(host.ref.reload).not.toHaveBeenCalled();
+    expect(host.ref.send).not.toHaveBeenCalled();
+    expect((await t.f.store.read()).bindings["agent-one"].accountId).toBe(t.keti.id);
+  });
+  it("switches to an approved account even when an unapproved one has more quota", async () => {
     const t = await harness({ mode: "auto", autoContinue: true }),
       host = daemon(t.switching);
+    await approve(t.f, "agent-one", t.keti, t.cody);
+    await t.f.home(".codex-other", "other", inSeconds(7200));
     t.setQuota("keti", 100);
     t.setQuota("cody", 40);
+    t.setQuota("other", 1);
     await t.usage.list();
     await t.failover.onTurnEnded(failed, context(host.paseo));
     expect(host.ref.reload).toHaveBeenCalledOnce();
@@ -240,11 +316,26 @@ describe("failover after a turn", () => {
       status: "active",
     });
   });
+  it("keeps a confirmed switch when the continuation message fails", async () => {
+    const t = await harness({ mode: "auto", autoContinue: true });
+    await approve(t.f, "agent-one", t.keti, t.cody);
+    t.setQuota("keti", 100);
+    const host = daemon(t.switching);
+    host.ref.send.mockRejectedValueOnce(new Error("send failed"));
+    await t.failover.onTurnEnded(failed, context(host.paseo));
+    expect(host.ref.reload).toHaveBeenCalledOnce();
+    expect(notice(host.ref)).toMatchObject({ variant: "switched", continued: false });
+    expect((await t.f.store.read()).bindings["agent-one"]).toMatchObject({
+      accountId: t.cody.id,
+      status: "active",
+    });
+  });
   it("acts on a completed turn only from the cached report and never sends a message", async () => {
     const t = await harness({ mode: "auto", autoContinue: true }),
       host = daemon(t.switching);
     t.setQuota("keti", 100);
     await t.usage.list();
+    await approve(t.f, "agent-one", t.keti, t.cody);
     const calls = (t.usage as unknown as { fetchApi: ReturnType<typeof vi.fn> }).fetchApi.mock.calls
       .length;
     await t.failover.onTurnEnded(completed, context(host.paseo));
@@ -296,7 +387,7 @@ describe("failover after a turn", () => {
     await t.usage.list();
     await t.failover.onTurnEnded(failed, context(host.paseo));
     expect(host.ref.reload).not.toHaveBeenCalled();
-    expect(notice(host.ref)).toMatchObject({ variant: "exhausted", fromName: "keti", auto: true });
+    expect(notice(host.ref)).toMatchObject({ variant: "exhausted", fromName: "keti", auto: false });
     expect(notice(host.ref).toName).toBeUndefined();
   });
   it("bounds auto switches per hour and never returns to an account it just left", async () => {
@@ -338,6 +429,7 @@ describe("failover after a turn", () => {
     const failover = new Failover(f.accounts, usage, switching, () => false, now);
     await f.store.change((state) => void (state.failover = { mode: "auto", autoContinue: false }));
     await switching.open(request({ labels: { [ACCOUNT_LABEL]: homes[0].id } }));
+    await approve(f, "agent-one", ...homes);
     const host = daemon(switching);
     await usage.list();
     let turnId = 0;
@@ -368,6 +460,7 @@ describe("failover after a turn", () => {
   });
   it("surfaces a refused switch as a failure row instead of undoing anything", async () => {
     const t = await harness({ mode: "auto", autoContinue: true });
+    await approve(t.f, "agent-one", t.keti, t.cody);
     t.setQuota("keti", 100);
     t.setQuota("cody", 40);
     await t.usage.list();

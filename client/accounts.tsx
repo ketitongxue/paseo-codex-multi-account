@@ -24,6 +24,7 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
     switchTo = useRpc(api.switchAccount),
     release = useRpc(api.releaseBinding);
   const setFailoverMode = useRpc(api.setFailover);
+  const setFailoverTarget = useRpc(api.setFailoverTarget);
   const [name, setName] = useState(""),
     [home, setHome] = useState(""),
     [cwd, setCwd] = useState("");
@@ -118,7 +119,15 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
     />
   );
   const agentId = params.agentId;
-  const binding = agentId ? snapshot.data?.bindings[agentId] : null;
+  const binding =
+    agentId && snapshot.data && Object.hasOwn(snapshot.data.bindings, agentId)
+      ? snapshot.data.bindings[agentId]
+      : null;
+  const targetsByAgent = snapshot.data?.failoverTargets;
+  const failoverTargets =
+    agentId && targetsByAgent && Object.hasOwn(targetsByAgent, agentId)
+      ? targetsByAgent[agentId]
+      : [];
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface0 }}>
       <ScrollView
@@ -180,7 +189,13 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
                   )}
               </View>
               {body(
-                "turn 结束后检测账号级窗口（5 小时/周）是否耗尽：提示模式在聊天中推荐账号；自动模式切换到余量最多的账号并可发送 Continue.。每 Agent 每小时至多 3 次自动切换，1 小时内不切回刚离开的账号。",
+                "turn 结束后检测账号级窗口（5 小时/周）是否耗尽。自动切换要求为此 Agent 授权当前账号及候选账号，并可发送 Continue.。每 Agent 每小时至多 3 次，1 小时内不切回刚离开的账号。",
+                true,
+              )}
+              {body(
+                agentId
+                  ? "在下方为允许此 Agent 自动切换的每个账号单独授权。账号身份变化后需要重新授权。"
+                  : "在 Codex Agent 中使用 /codex-accounts 打开此页面，为该 Agent 授权账号。",
                 true,
               )}
             </View>
@@ -196,6 +211,9 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
           body("暂无账号。创建安全登录账号，或保存已有 CODEX_HOME。", true)}
         {snapshot.data?.accounts.map((account) => {
           const row = quotas.data?.find((entry) => entry.accountId === account.id);
+          const approval = failoverTargets.find((target) => target.accountId === account.id);
+          const identityKey = account.identity?.key;
+          const isApproved = approval && approval.identityKey === identityKey;
           return (
             <View
               key={account.id}
@@ -319,6 +337,31 @@ export function AccountsScreen({ theme, layout, params, navigation }: PluginScre
                   setDeleting(account);
                 })}
               </View>
+              {agentId && (binding || approval) && (
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  {isApproved && body("已加入此 Agent 的自动切换账号组")}
+                  {approval && !isApproved && body("当前身份无法使用已有授权", true)}
+                  {!isApproved &&
+                    binding &&
+                    binding.status !== "unconfirmed" &&
+                    identityKey &&
+                    !account.identity?.expired &&
+                    button(
+                      "允许此 Agent 自动切换使用此账号",
+                      () =>
+                        setFailoverTarget({
+                          agentId,
+                          accountId: account.id,
+                          identityKey,
+                        }),
+                      account.loginBusy,
+                    )}
+                  {approval &&
+                    button("撤销此 Agent 的自动切换授权", () =>
+                      setFailoverTarget({ agentId, accountId: account.id, identityKey: null }),
+                    )}
+                </View>
+              )}
               {!account.managed &&
                 body(
                   "外部账号重新登录：使用该 CODEX_HOME 运行 codex login；插件不会改写其认证存储。",

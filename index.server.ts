@@ -54,6 +54,9 @@ export default function contribute(server: PluginServerContext) {
       return {};
     }),
   );
+  server.handle(rpc.setFailoverTarget, ({ agentId, accountId, identityKey }, { paseo }) =>
+    safe(() => controller.setFailoverTarget(agentId, accountId, identityKey, paseo)),
+  );
   server.registerUsageSource(usage.source());
   const listTool = defineAgentTool({
     name: "codex_accounts",

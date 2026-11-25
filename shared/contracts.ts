@@ -90,11 +90,15 @@ export const FailoverSettings = z
   })
   .strict();
 export type FailoverSettings = z.infer<typeof FailoverSettings>;
+const FailoverTarget = z.object({ accountId: Id, identityKey: z.string().min(1) }).strict();
+export const FailoverTargets = z.record(Id, z.array(FailoverTarget));
+export type FailoverTarget = z.infer<typeof FailoverTarget>;
 export const Snapshot = z.object({
   accounts: z.array(AccountView),
   defaultId: Id.nullable(),
   bindings: z.record(z.string(), Binding),
   failover: FailoverSettings,
+  failoverTargets: FailoverTargets.default({}),
 });
 export type Snapshot = z.infer<typeof Snapshot>;
 export const UsageRow = z.object({
@@ -176,6 +180,17 @@ export const releaseBinding = defineRpc({
 export const setFailover = defineRpc({
   name: "failover.set",
   input: FailoverSettings,
+  output: empty,
+});
+export const setFailoverTarget = defineRpc({
+  name: "failover.target",
+  input: z
+    .object({
+      agentId: Id,
+      accountId: Id,
+      identityKey: z.string().min(1).nullable(),
+    })
+    .strict(),
   output: empty,
 });
 // Timeline item appended by the daemon after a turn that exhausted an account.

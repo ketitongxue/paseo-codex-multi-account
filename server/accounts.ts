@@ -115,6 +115,7 @@ export class Accounts {
       defaultId: state.defaultId,
       bindings: state.bindings,
       failover: resolveFailover(state.failover),
+      failoverTargets: state.failoverTargets,
     };
   }
   async save(homeInput: string, name: string): Promise<Account> {
